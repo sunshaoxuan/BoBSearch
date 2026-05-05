@@ -79,7 +79,7 @@ expect_ssh_sudo() {
 set timeout $timeout
 spawn ssh -o StrictHostKeyChecking=no $DEPLOY_SSH_USER@$DEPLOY_SSH_HOST "cd '$DEPLOY_TARGET_DIR' && sudo -S sh -c '$command'"
 expect {
-  -re {password:} {
+  -re {password.*:} {
     send -- "$DEPLOY_SSH_PASSWORD\r"
     exp_continue
   }
