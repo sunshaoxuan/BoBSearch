@@ -1,0 +1,22 @@
+# Changelog
+
+All notable changes to BoBSearch will be documented in this file.
+
+## Unreleased
+
+### Added
+
+- BoBSearch product branding and logo assets.
+- External-services deployment mode for existing Jackett/qBittorrent/Jellyfin stacks.
+- Bundled Docker profile for internal Jackett and qBittorrent support services.
+- `env.sample` and `env.bundled.sample` for publishable configuration.
+- Responsive mobile UI with expandable long names.
+- Jackett search aggregation, deterministic deduplication, relevance scoring, and LLM cleanup.
+- qBittorrent add/download management and Jellyfin move workflow.
+- TMDb-aware Jellyfin target folder naming.
+
+### Changed
+
+- Docker Compose is env-driven and exposes only BoBSearch by default.
+- Runtime configuration is consolidated into `.env`.
+- Documentation rewritten for public release usage.

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BoBSearch Login</title>
+  <link rel="icon" href="/static/brand/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css?v=20260505-bobsearch-release">
+</head>
+<body class="login-body">
+  <main class="login-panel">
+    <div class="login-brand">
+      <img src="/static/brand/bobsearch-logo.svg" alt="" class="brand-logo">
+      <h1>BoBSearch</h1>
+    </div>
+    <form method="post" action="/login" class="login-form">
+      <label>用户名<input name="username" autocomplete="username" autofocus></label>
+      <label>密码<input name="password" type="password" autocomplete="current-password"></label>
+      {% if error %}<p class="error">{{ error }}</p>{% endif %}
+      <button type="submit">登录</button>
+    </form>
+  </main>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BoBSearch</title>
+  <link rel="icon" href="/static/brand/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css?v=20260505-bobsearch-release">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar glass">
+      <div class="brand-lockup">
+        <img src="/static/brand/bobsearch-logo.svg" alt="" class="brand-logo">
+        <div>
+          <span class="eyebrow">Media Search Console</span>
+          <h1>BoBSearch</h1>
+          <p>统一搜索、相关度过滤、LLM 整理与下载入库管理。</p>
+        </div>
+      </div>
+      <form method="post" action="/logout"><button class="ghost">退出</button></form>
+    </header>
+
+    <main class="layout">
+      <section class="main-column">
+        <nav class="tabs glass" aria-label="主要功能">
+          <button class="tab active" data-tab="search" type="button">视频搜索</button>
+          <button class="tab" data-tab="downloads" type="button">下载管理</button>
+        </nav>
+
+        <section id="searchTab" class="tab-panel active">
+          <section class="search-panel glass">
+            <div class="search-grid">
+              <input id="query" placeholder="输入关键字，例如 ubuntu / 飞驰人生3" autocomplete="off">
+              <select id="category" aria-label="分类">
+                <option value="all">全部</option>
+                <option value="movies">电影</option>
+                <option value="tv">剧集</option>
+                <option value="anime">动画</option>
+              </select>
+              <select id="sort" aria-label="排序">
+                <option value="seeders">按种子数</option>
+                <option value="sources">按来源数</option>
+                <option value="date">按发布时间</option>
+                <option value="size">按大小</option>
+              </select>
+              <button id="searchBtn">搜索</button>
+            </div>
+            <div class="filter-grid">
+              <input id="inResultsQuery" placeholder="结果集内查询：标题、标签、源名、hash..." autocomplete="off">
+              <select id="relevanceMode" aria-label="相关度模式">
+                <option value="smart" selected>智能过滤</option>
+                <option value="strict">严格过滤</option>
+                <option value="loose">宽松显示</option>
+              </select>
+              <button id="healthBtn" class="ghost">健康检查</button>
+            </div>
+          </section>
+
+          <section id="status" class="status glass"></section>
+          <section id="errors" class="errors"></section>
+          <section id="results" class="results"></section>
+          <section id="lowResults" class="low-results"></section>
+          <nav id="pagination" class="pagination glass"></nav>
+        </section>
+
+        <section id="downloadsTab" class="tab-panel">
+          <section class="download-panel glass">
+            <div class="section-head">
+              <div>
+                <span class="eyebrow">qB Downloads</span>
+                <h2>下载管理</h2>
+              </div>
+              <button id="refreshTorrentsBtn" class="ghost">刷新清单</button>
+            </div>
+            <p class="section-note">显示 qB 全部任务。已完成任务可勾选文件/文件夹并移动到 Jellyfin，成功后删除 qB 任务和剩余文件。</p>
+            <div id="torrentStatus" class="mini-status"></div>
+            <div id="torrentList" class="torrent-list"></div>
+          </section>
+        </section>
+      </section>
+
+      <aside class="side-column">
+        <section id="searchSideCard" class="glass side-card">
+          <h2>搜索概览</h2>
+          <div id="summary" class="summary metrics"></div>
+          <p id="viewMeta" class="view-meta">等待搜索。</p>
+        </section>
+        <section id="downloadsSideCard" class="glass side-card hidden">
+          <h2>下载概览</h2>
+          <div id="downloadSummary" class="summary metrics"></div>
+          <p id="downloadMeta" class="view-meta">进入下载管理后读取 qB 清单。</p>
+        </section>
+        <section class="glass side-card">
+          <h2>服务状态</h2>
+          <div id="healthPanel" class="health-panel"></div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <script src="/static/app.js?v=20260505-bobsearch-release"></script>
+</body>
+</html>

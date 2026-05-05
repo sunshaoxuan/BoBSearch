@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.sample
+!env.sample
+!env.bundled.sample
+env.local
+*.key
+*.secret
+secrets/
+*.log
+__pycache__/
+.pytest_cache/
+.venv/
+dist/
+build/

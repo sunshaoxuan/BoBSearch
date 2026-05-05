@@ -1,0 +1,46 @@
+services:
+  bobsearch:
+    build: .
+    image: ${APP_IMAGE:-bobsearch:local}
+    container_name: ${APP_CONTAINER_NAME:-bobsearch}
+    restart: ${APP_RESTART_POLICY:-unless-stopped}
+    env_file:
+      - .env
+    ports:
+      - "${APP_PUBLIC_PORT:-7788}:${APP_PORT:-8000}"
+    volumes:
+      - ${JACKETT_INDEXERS_HOST_PATH:-./data/jackett/Jackett/Indexers}:${JACKETT_INDEXERS_DIR:-/jackett-indexers}:ro
+      - ${QBIT_DOWNLOADS_HOST_PATH:-./downloads}:${QBIT_LOCAL_DOWNLOADS_PATH:-/downloads}
+      - ${QBIT_EXTRA_DOWNLOADS_HOST_PATH:-./downloads-extra}:${QBIT_EXTRA_LOCAL_DOWNLOADS_PATH:-/downloads-extra}
+      - ${JELLYFIN_LIBRARY_HOST_PATH:-./library}:${JELLYFIN_LIBRARY_PATH:-/jellyfin/library}
+
+  jackett:
+    profiles: ["bundled"]
+    image: lscr.io/linuxserver/jackett:latest
+    container_name: ${BUNDLED_JACKETT_CONTAINER_NAME:-bobsearch-jackett}
+    restart: ${APP_RESTART_POLICY:-unless-stopped}
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Etc/UTC}
+      - AUTO_UPDATE=true
+    expose:
+      - "9117"
+    volumes:
+      - ${BUNDLED_JACKETT_CONFIG_HOST_PATH:-./data/jackett}:/config
+
+  qbittorrent:
+    profiles: ["bundled"]
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: ${BUNDLED_QBIT_CONTAINER_NAME:-bobsearch-qbittorrent}
+    restart: ${APP_RESTART_POLICY:-unless-stopped}
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Etc/UTC}
+      - WEBUI_PORT=8080
+    expose:
+      - "8080"
+    volumes:
+      - ${BUNDLED_QBIT_CONFIG_HOST_PATH:-./data/qbittorrent/config}:/config
+      - ${QBIT_DOWNLOADS_HOST_PATH:-./downloads}:/downloads
