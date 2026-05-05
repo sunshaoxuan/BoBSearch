@@ -296,7 +296,7 @@ function card(result) {
           <div class="trackers">${escapeHtml((result.trackers || []).join(" / "))}</div>
           ${result.magnet_uri ? `<details class="magnet"><summary>显示磁力链接</summary><code>${escapeHtml(result.magnet_uri)}</code></details>` : ""}
           <div class="actions">
-            <button class="qbit-add-btn" onclick="addToQbit('${escapeAttr(result.token)}', this)">加入 qB</button>
+            <button class="qbit-add-btn" onclick="addToQbit('${escapeAttr(result.token)}', this)">添加到下载</button>
           </div>
         </div>
         ${resourceGrid(result)}
@@ -360,17 +360,17 @@ function searchableText(result) {
 }
 
 async function addToQbit(token, button) {
-  if (!confirm("请确认你有权下载该资源。是否加入 qBittorrent？")) return;
+  if (!confirm("请确认你有权下载该资源。是否添加到下载？")) return;
   if (state.addingTokens.has(token)) return;
   state.addingTokens.add(token);
   setQbitAdding(button, true);
-  setStatusBusy("正在提交到 qBittorrent，创建下载任务...");
+  setStatusBusy("正在添加到下载，创建下载任务...");
   try {
     const data = await postJson("/api/qbit/add", { query: state.query, token });
     setStatusDone(data.message);
     $("status").textContent = data.message;
   } catch (err) {
-    setStatusDone(`加入失败：${err.message}`, true);
+    setStatusDone(`添加失败：${err.message}`, true);
   } finally {
     state.addingTokens.delete(token);
     setQbitAdding(button, false);
@@ -381,7 +381,7 @@ function setQbitAdding(button, isAdding) {
   if (!button) return;
   button.disabled = isAdding;
   button.classList.toggle("qbit-adding", isAdding);
-  button.innerHTML = isAdding ? `<span class="button-spinner" aria-hidden="true"></span><span>加入中</span>` : "加入 qB";
+  button.innerHTML = isAdding ? `<span class="button-spinner" aria-hidden="true"></span><span>添加中</span>` : "添加到下载";
 }
 
 function setStatusBusy(text) {

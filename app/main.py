@@ -120,7 +120,7 @@ async def api_add(payload: dict, _: None = Depends(require_login)):
         await client.add_result(result)
     finally:
         await client.close()
-    return JSONResponse({"ok": True, "message": "已加入 qBittorrent", "title": result.title})
+    return JSONResponse({"ok": True, "message": "已添加到下载", "title": result.title})
 
 
 @app.get("/api/qbit/torrents")
