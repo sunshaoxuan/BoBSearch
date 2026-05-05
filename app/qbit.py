@@ -530,6 +530,16 @@ class QbitClient:
             return
         raise RuntimeError("qBittorrent stop/pause endpoint unavailable")
 
+    async def start_torrent(self, torrent_hash: str) -> None:
+        await self.ensure_login()
+        for endpoint in ("/api/v2/torrents/start", "/api/v2/torrents/resume"):
+            r = await self.client.post(endpoint, data={"hashes": torrent_hash})
+            if r.status_code == 404:
+                continue
+            r.raise_for_status()
+            return
+        raise RuntimeError("qBittorrent start/resume endpoint unavailable")
+
     async def delete_torrent(self, torrent_hash: str, delete_files: bool) -> None:
         await self.ensure_login()
         r = await self.client.post(

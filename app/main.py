@@ -141,6 +141,42 @@ async def api_qbit_files(torrent_hash: str, _: None = Depends(require_login)):
         await client.close()
 
 
+@app.post("/api/qbit/torrents/{torrent_hash}/start")
+async def api_qbit_start(torrent_hash: str, _: None = Depends(require_login)):
+    client = QbitClient(get_settings())
+    try:
+        await client.start_torrent(torrent_hash)
+        return {"ok": True, "message": "已开始 qB 任务"}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"{type(exc).__name__}: {str(exc)[:240]}") from exc
+    finally:
+        await client.close()
+
+
+@app.post("/api/qbit/torrents/{torrent_hash}/stop")
+async def api_qbit_stop(torrent_hash: str, _: None = Depends(require_login)):
+    client = QbitClient(get_settings())
+    try:
+        await client.stop_torrent(torrent_hash)
+        return {"ok": True, "message": "已停止 qB 任务"}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"{type(exc).__name__}: {str(exc)[:240]}") from exc
+    finally:
+        await client.close()
+
+
+@app.post("/api/qbit/torrents/{torrent_hash}/delete-with-files")
+async def api_qbit_delete_with_files(torrent_hash: str, _: None = Depends(require_login)):
+    client = QbitClient(get_settings())
+    try:
+        await client.delete_torrent(torrent_hash, delete_files=True)
+        return {"ok": True, "message": "已删除 qB 任务及文件"}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"{type(exc).__name__}: {str(exc)[:240]}") from exc
+    finally:
+        await client.close()
+
+
 @app.get("/api/jellyfin/targets")
 async def api_jellyfin_targets(query: str, _: None = Depends(require_login)):
     return {"targets": await jellyfin_target_suggestions_with_llm(query, get_settings())}

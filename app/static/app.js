@@ -16,6 +16,7 @@ const state = {
   torrentFiles: {},
   targetSuggestions: {},
   selectedFiles: {},
+  torrentActions: new Set(),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -462,12 +463,55 @@ function torrentCard(torrent) {
             <span>↑ ${fmtSize(torrent.upload_speed || 0)}/s</span>
           </div>
         </div>
-        <button class="ghost torrent-action" onclick="toggleTorrentFiles('${escapeAttr(torrent.hash)}')">文件</button>
+        <div class="torrent-actions">
+          <button class="ghost torrent-action" onclick="toggleTorrentFiles('${escapeAttr(torrent.hash)}')">文件</button>
+          <button class="ghost torrent-action" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'start', this)">开始</button>
+          <button class="ghost torrent-action" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'stop', this)">停止</button>
+          <button class="ghost danger torrent-action" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'delete-with-files', this)">删除</button>
+        </div>
       </div>
       <div class="progress"><span style="width:${Math.min(100, Math.max(0, progress))}%"></span></div>
       <div id="files-${escapeAttr(torrent.hash)}" class="torrent-files"></div>
     </article>
   `;
+}
+
+async function controlTorrent(hash, action, button) {
+  const actionText = {
+    start: "开始",
+    stop: "停止",
+    "delete-with-files": "删除任务和文件",
+  }[action] || action;
+  const key = `${hash}:${action}`;
+  if (state.torrentActions.has(key)) return;
+  if (action === "delete-with-files") {
+    const torrent = state.torrents.find((item) => item.hash === hash);
+    const ok = confirm(`将从 qB 删除任务，并连同已下载文件一起删除：\n${torrent?.name || hash}\n\n这个操作不能撤销。继续吗？`);
+    if (!ok) return;
+  }
+  state.torrentActions.add(key);
+  setTorrentActionBusy(button, true, actionText);
+  $("torrentStatus").textContent = `正在${actionText} qB 任务...`;
+  try {
+    const data = await postJson(`/api/qbit/torrents/${encodeURIComponent(hash)}/${action}`, {});
+    $("torrentStatus").textContent = data.message || `已${actionText}。`;
+    delete state.torrentFiles[hash];
+    delete state.targetSuggestions[hash];
+    delete state.selectedFiles[hash];
+    await loadTorrents();
+  } catch (err) {
+    $("torrentStatus").textContent = `${actionText}失败：${err.message}`;
+  } finally {
+    state.torrentActions.delete(key);
+    setTorrentActionBusy(button, false, actionText);
+  }
+}
+
+function setTorrentActionBusy(button, isBusy, actionText) {
+  if (!button) return;
+  button.disabled = isBusy;
+  button.classList.toggle("qbit-adding", isBusy);
+  button.innerHTML = isBusy ? `<span class="button-spinner" aria-hidden="true"></span><span>处理中</span>` : actionText.replace("任务和文件", "");
 }
 
 async function toggleTorrentFiles(hash) {

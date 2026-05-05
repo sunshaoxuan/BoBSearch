@@ -2,6 +2,12 @@
 
 All notable changes to BoBSearch will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- qBittorrent task controls in Download Management: start, stop, and delete task with files.
+
 ## [1.0.0] - 2026-05-05
 
 ### Added

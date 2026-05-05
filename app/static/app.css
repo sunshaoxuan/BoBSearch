@@ -655,7 +655,7 @@ button.ghost {
 
 .torrent-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
 }
@@ -694,6 +694,13 @@ button.ghost {
   overflow-wrap: anywhere;
 }
 
+.torrent-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 72px);
+  gap: 8px;
+  justify-content: end;
+}
+
 .torrent-action {
   width: 72px;
   min-width: 72px;
@@ -701,6 +708,16 @@ button.ghost {
   justify-self: end;
   white-space: nowrap;
   text-align: center;
+}
+
+.torrent-action.danger {
+  border-color: rgba(180, 35, 24, 0.34);
+  color: var(--danger);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.torrent-action.danger:hover {
+  background: rgba(180, 35, 24, 0.08);
 }
 
 .progress {
@@ -1055,6 +1072,11 @@ button.ghost {
     align-items: stretch;
   }
 
+  .torrent-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
   .torrent-action {
     width: 100%;
     min-width: 0;
@@ -1358,6 +1380,10 @@ button.ghost {
   }
 
   .resource-grid, .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .torrent-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
 import pytest
 
 from app.config import Settings
@@ -49,6 +50,10 @@ def torrent() -> QbitTorrent:
         category="movies-staging",
         is_complete=True,
     )
+
+
+def mock_response(status_code: int = 200) -> httpx.Response:
+    return httpx.Response(status_code, request=httpx.Request("POST", "http://qbit.test/api"))
 
 
 def test_safe_relative_path_rejects_escape():
@@ -165,6 +170,72 @@ def test_move_success_deletes_with_files(monkeypatch, tmp_path):
 
         await client.move_selected("abc", ["Movie.mkv"], "movies", "Movie (2026)")
         assert delete_args == ("abc", True)
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_start_torrent_uses_start_endpoint(monkeypatch, tmp_path):
+    async def run():
+        client = QbitClient(settings(tmp_path))
+        calls = []
+
+        async def fake_login():
+            client.logged_in = True
+
+        async def fake_post(endpoint, data):
+            calls.append((endpoint, data))
+            return mock_response()
+
+        monkeypatch.setattr(client, "login", fake_login)
+        monkeypatch.setattr(client.client, "post", fake_post)
+
+        await client.start_torrent("abc")
+        assert calls == [("/api/v2/torrents/start", {"hashes": "abc"})]
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_start_torrent_falls_back_to_resume(monkeypatch, tmp_path):
+    async def run():
+        client = QbitClient(settings(tmp_path))
+        calls = []
+
+        async def fake_login():
+            client.logged_in = True
+
+        async def fake_post(endpoint, data):
+            calls.append(endpoint)
+            return mock_response(404 if endpoint.endswith("/start") else 200)
+
+        monkeypatch.setattr(client, "login", fake_login)
+        monkeypatch.setattr(client.client, "post", fake_post)
+
+        await client.start_torrent("abc")
+        assert calls == ["/api/v2/torrents/start", "/api/v2/torrents/resume"]
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_delete_torrent_can_delete_files(monkeypatch, tmp_path):
+    async def run():
+        client = QbitClient(settings(tmp_path))
+        calls = []
+
+        async def fake_login():
+            client.logged_in = True
+
+        async def fake_post(endpoint, data):
+            calls.append((endpoint, data))
+            return mock_response()
+
+        monkeypatch.setattr(client, "login", fake_login)
+        monkeypatch.setattr(client.client, "post", fake_post)
+
+        await client.delete_torrent("abc", delete_files=True)
+        assert calls == [("/api/v2/torrents/delete", {"hashes": "abc", "deleteFiles": "true"})]
         await client.close()
 
     asyncio.run(run())
