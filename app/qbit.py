@@ -128,6 +128,27 @@ def display_name_without_ids(folder: str) -> str:
     return re.sub(r"\s*\(\d{4}\)\s*$", "", without_id).strip()
 
 
+def folder_year(folder: str) -> str | None:
+    match = re.search(r"\((19\d{2}|20\d{2})\)", folder)
+    return match.group(1) if match else None
+
+
+def release_years(query: str) -> set[str]:
+    return set(re.findall(r"(?<!\d)(?:19\d{2}|20\d{2})(?!\d)", query))
+
+
+def has_sequel_suffix_after_title(query_norm: str, folder_norm: str) -> bool:
+    if not folder_norm or folder_norm[-1:].isdigit():
+        return False
+    start = query_norm.find(folder_norm)
+    while start >= 0:
+        end = start + len(folder_norm)
+        if end < len(query_norm) and query_norm[end].isdigit():
+            return True
+        start = query_norm.find(folder_norm, start + 1)
+    return False
+
+
 def generated_folder_name(query: str) -> str:
     stem = Path(query).stem
     chunks = re.findall(r"[\u3400-\u9fff][\u3400-\u9fffA-Za-z0-9：·・]+", stem)
@@ -343,9 +364,19 @@ def target_score(query: str, folder: str) -> tuple[float, str]:
     folder_norm = normalize_media_text(folder_title)
     if not query_norm or not folder_norm:
         return 0.0, "无可匹配文本"
+    years = release_years(query)
+    year = folder_year(folder)
+    year_mismatch = bool(year and years and year not in years)
+    sequel_mismatch = has_sequel_suffix_after_title(query_norm, folder_norm)
+    if sequel_mismatch:
+        return 0.25, "任务名疑似续集，已有目录缺少续集编号"
     if folder_norm in query_norm:
+        if year_mismatch:
+            return 0.45, f"目录名命中但年份不一致：目录 {year}，任务 {', '.join(sorted(years))}"
         return 1.0, "目录名完整命中任务名"
     if query_norm in folder_norm:
+        if year_mismatch:
+            return 0.42, f"任务名命中但年份不一致：目录 {year}，任务 {', '.join(sorted(years))}"
         return 0.92, "任务名完整命中目录名"
     folder_bigrams = {folder_norm[i : i + 2] for i in range(max(0, len(folder_norm) - 1))}
     query_bigrams = {query_norm[i : i + 2] for i in range(max(0, len(query_norm) - 1))}
@@ -354,7 +385,11 @@ def target_score(query: str, folder: str) -> tuple[float, str]:
     matched = folder_bigrams & query_bigrams
     ratio = len(matched) / len(folder_bigrams)
     if ratio:
-        return round(min(0.88, ratio), 3), f"片名字符组匹配 {len(matched)}/{len(folder_bigrams)}"
+        score = min(0.88, ratio)
+        if year_mismatch:
+            score = min(0.42, score)
+            return round(score, 3), f"片名字符组部分匹配但年份不一致：目录 {year}，任务 {', '.join(sorted(years))}"
+        return round(score, 3), f"片名字符组匹配 {len(matched)}/{len(folder_bigrams)}"
     return 0.0, "无匹配"
 
 
@@ -400,7 +435,7 @@ async def jellyfin_target_suggestions_with_llm(query: str, settings: Settings, l
     llm_target = await llm_generated_target_suggestion(query, settings)
     if llm_target and not any(item["category"] == llm_target["category"] and item["folder"] == llm_target["folder"] for item in suggestions):
         suggestions.append(llm_target)
-    suggestions.sort(key=lambda item: (item["existing"], item["score"], item["category"] == "movies"), reverse=True)
+    suggestions.sort(key=lambda item: (item["score"], item["existing"], item["category"] == "movies"), reverse=True)
     return suggestions[:limit]
 
 

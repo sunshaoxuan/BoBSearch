@@ -565,7 +565,7 @@ async function toggleTorrentFiles(hash) {
 }
 
 function targetCacheKey(hash) {
-  return `bobsearch:targetSuggestions:${hash}`;
+  return `bobsearch:targetSuggestions:v2:${hash}`;
 }
 
 function readTargetSuggestionsCache(hash) {

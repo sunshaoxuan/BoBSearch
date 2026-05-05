@@ -20,6 +20,7 @@ from app.qbit import (
     qbit_path_to_local,
     release_search_text,
     safe_relative_path,
+    target_score,
     unique_destination,
 )
 
@@ -325,6 +326,41 @@ def test_jellyfin_target_suggestions_match_existing_tmdb_folder(tmp_path):
     assert suggestions[0]["category"] == "movies"
     assert suggestions[0]["folder"] == "飞驰人生3 (2026) [tmdbid-1462229]"
     assert suggestions[0]["score"] == 1.0
+
+
+def test_jellyfin_target_suggestions_do_not_match_prior_sequel_folder(tmp_path):
+    cfg = settings(tmp_path)
+    target = tmp_path / "jellyfin" / "movies" / "疯狂动物城 (2016) [tmdbid-269149]"
+    target.mkdir(parents=True)
+    query = "【高清影视之家发布 www.BBQDDQ.com】 疯狂动物城2[简繁英字幕].Zootopia.2.2025.2160p.iT.WEB-DL.H.265.DDP5.1.Atmos-QuickIO"
+
+    score, reason = target_score(query, target.name)
+    assert score < 0.5
+    assert "续集" in reason or "年份不一致" in reason
+
+
+def test_llm_target_can_outrank_low_confidence_existing_prior_sequel(monkeypatch, tmp_path):
+    async def run():
+        cfg = settings(tmp_path)
+        target = tmp_path / "jellyfin" / "movies" / "疯狂动物城 (2016) [tmdbid-269149]"
+        target.mkdir(parents=True)
+
+        async def fake_llm(query, settings):
+            return {
+                "category": "movies",
+                "folder": "疯狂动物城2 (2025) [tmdbid-1234567]",
+                "score": 0.9,
+                "reason": "TMDb 匹配续集和年份",
+                "existing": False,
+            }
+
+        monkeypatch.setattr("app.qbit.llm_generated_target_suggestion", fake_llm)
+        query = "【高清影视之家发布 www.BBQDDQ.com】 疯狂动物城2[简繁英字幕].Zootopia.2.2025.2160p.iT.WEB-DL.H.265.DDP5.1.Atmos-QuickIO"
+        suggestions = await jellyfin_target_suggestions_with_llm(query, cfg)
+        assert suggestions[0]["folder"] == "疯狂动物城2 (2025) [tmdbid-1234567]"
+        assert suggestions[0]["existing"] is False
+
+    asyncio.run(run())
 
 
 def test_jellyfin_target_suggestions_generate_fallback(tmp_path):
