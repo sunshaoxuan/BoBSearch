@@ -72,6 +72,22 @@ expect eof
 EOF
 }
 
+expect_ssh_sudo() {
+  local timeout="$1"
+  local command="$2"
+  expect <<EOF
+set timeout $timeout
+spawn ssh -o StrictHostKeyChecking=no $DEPLOY_SSH_USER@$DEPLOY_SSH_HOST "cd '$DEPLOY_TARGET_DIR' && sudo -S sh -c '$command'"
+expect {
+  -re {password:} {
+    send -- "$DEPLOY_SSH_PASSWORD\r"
+    exp_continue
+  }
+  eof
+}
+EOF
+}
+
 expect_ssh 120 "mkdir -p '$DEPLOY_TARGET_DIR'"
 
 tmp_archive="$(mktemp -t bobsearch.XXXXXX.tar.gz)"
@@ -97,13 +113,7 @@ if [[ -n "${COMPOSE_PROFILES:-}" ]]; then
   compose_profiles_prefix="COMPOSE_PROFILES='$COMPOSE_PROFILES'"
 fi
 
-expect <<EOF
-set timeout 900
-spawn ssh -o StrictHostKeyChecking=no $DEPLOY_SSH_USER@$DEPLOY_SSH_HOST "cd '$DEPLOY_TARGET_DIR' && echo '$DEPLOY_SSH_PASSWORD' | sudo -S sh -c '$compose_profiles_prefix docker compose up -d --build --remove-orphans'"
-expect -re {password:}
-send -- "$DEPLOY_SSH_PASSWORD\r"
-expect eof
-EOF
+expect_ssh_sudo 900 "$compose_profiles_prefix docker compose up -d --build --remove-orphans"
 
 if [[ "$PUBLISH_DOCKERHUB" == "1" ]]; then
   tmp_dockerhub_password="$(mktemp)"
@@ -112,13 +122,7 @@ if [[ "$PUBLISH_DOCKERHUB" == "1" ]]; then
   expect_scp 120 "$tmp_dockerhub_password" /tmp/bobsearch.dockerhub.pass
   rm -f "$tmp_dockerhub_password"
 
-  expect <<EOF
-set timeout 900
-spawn ssh -o StrictHostKeyChecking=no $DEPLOY_SSH_USER@$DEPLOY_SSH_HOST "cd '$DEPLOY_TARGET_DIR' && chmod 600 /tmp/bobsearch.dockerhub.pass && echo '$DEPLOY_SSH_PASSWORD' | sudo -S sh -c 'docker login --username \"$DOCKERHUB_USER\" --password-stdin < /tmp/bobsearch.dockerhub.pass && docker push \"$APP_IMAGE\"; docker logout; rm -f /tmp/bobsearch.dockerhub.pass'"
-expect -re {password:}
-send -- "$DEPLOY_SSH_PASSWORD\r"
-expect eof
-EOF
+  expect_ssh_sudo 900 "chmod 600 /tmp/bobsearch.dockerhub.pass && docker login --username \"$DOCKERHUB_USER\" --password-stdin < /tmp/bobsearch.dockerhub.pass && docker push \"$APP_IMAGE\"; docker logout; rm -f /tmp/bobsearch.dockerhub.pass"
   echo "Pushed Docker image: $APP_IMAGE"
 fi
 
