@@ -72,20 +72,36 @@ expect eof
 EOF
 }
 
+shell_quote() {
+  printf "'%s'" "${1//\'/\'\\\'\'}"
+}
+
 expect_ssh_sudo() {
   local timeout="$1"
   local command="$2"
-  expect <<EOF
-set timeout $timeout
-spawn ssh -o StrictHostKeyChecking=no $DEPLOY_SSH_USER@$DEPLOY_SSH_HOST "cd '$DEPLOY_TARGET_DIR' && sudo -S sh -c '$command'"
-expect {
-  -re {password.*:} {
-    send -- "$DEPLOY_SSH_PASSWORD\r"
-    exp_continue
-  }
-  eof
-}
-EOF
+  local suffix="$$.$RANDOM"
+  local tmp_script
+  local tmp_sudo_password
+  local remote_script="/tmp/bobsearch.sudo.$suffix.sh"
+  local remote_sudo_password="/tmp/bobsearch.sudo.$suffix.pass"
+
+  tmp_script="$(mktemp)"
+  tmp_sudo_password="$(mktemp)"
+  {
+    printf '#!/usr/bin/env sh\n'
+    printf 'set -e\n'
+    printf 'cd %s\n' "$(shell_quote "$DEPLOY_TARGET_DIR")"
+    printf '%s\n' "$command"
+  } > "$tmp_script"
+  printf '%s\n' "$DEPLOY_SSH_PASSWORD" > "$tmp_sudo_password"
+  chmod 600 "$tmp_script" "$tmp_sudo_password"
+
+  expect_scp 120 "$tmp_script" "$remote_script"
+  expect_scp 120 "$tmp_sudo_password" "$remote_sudo_password"
+  rm -f "$tmp_script" "$tmp_sudo_password"
+
+  expect_ssh 120 "chmod 700 $(shell_quote "$remote_script") && chmod 600 $(shell_quote "$remote_sudo_password")"
+  expect_ssh "$timeout" "sudo -S $(shell_quote "$remote_script") < $(shell_quote "$remote_sudo_password") && rm -f $(shell_quote "$remote_script") $(shell_quote "$remote_sudo_password")"
 }
 
 expect_ssh 120 "mkdir -p '$DEPLOY_TARGET_DIR'"
