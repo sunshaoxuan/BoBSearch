@@ -446,6 +446,17 @@ function renderTorrents() {
   $("torrentList").innerHTML = state.torrents.map(torrentCard).join("") || emptyState("qB 暂无下载任务。");
 }
 
+function icon(name) {
+  const paths = {
+    play: '<polygon points="9 7 17 12 9 17 9 7"></polygon>',
+    stop: '<rect x="8" y="8" width="8" height="8" rx="1.5"></rect>',
+    trash: '<path d="M9 6h6"></path><path d="M10 6l.5-2h3l.5 2"></path><path d="M7 8h10"></path><path d="M9 8l.5 11h5L15 8"></path>',
+    chevronDown: '<path d="m7 10 5 5 5-5"></path>',
+    chevronUp: '<path d="m7 14 5-5 5 5"></path>',
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths[name] || ""}</svg>`;
+}
+
 function torrentCard(torrent) {
   const complete = Boolean(torrent.is_complete);
   const progress = Math.round((torrent.progress || 0) * 1000) / 10;
@@ -464,10 +475,12 @@ function torrentCard(torrent) {
           </div>
         </div>
         <div class="torrent-actions">
-          <button class="ghost torrent-action" onclick="toggleTorrentFiles('${escapeAttr(torrent.hash)}')">文件</button>
-          <button class="ghost torrent-action" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'start', this)">开始</button>
-          <button class="ghost torrent-action" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'stop', this)">停止</button>
-          <button class="ghost danger torrent-action" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'delete-with-files', this)">删除</button>
+          <div class="torrent-control-row">
+            <button class="ghost torrent-action icon-btn" title="开始" aria-label="开始" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'start', this)">${icon("play")}</button>
+            <button class="ghost torrent-action icon-btn" title="停止" aria-label="停止" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'stop', this)">${icon("stop")}</button>
+            <button class="ghost danger torrent-action icon-btn" title="删除任务和文件" aria-label="删除任务和文件" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'delete-with-files', this)">${icon("trash")}</button>
+          </div>
+          <button id="toggle-files-${escapeAttr(torrent.hash)}" class="ghost torrent-action icon-btn torrent-expand-btn" title="展开文件" aria-label="展开文件" aria-expanded="false" onclick="toggleTorrentFiles('${escapeAttr(torrent.hash)}')">${icon("chevronDown")}</button>
         </div>
       </div>
       <div class="progress"><span style="width:${Math.min(100, Math.max(0, progress))}%"></span></div>
@@ -511,35 +524,82 @@ function setTorrentActionBusy(button, isBusy, actionText) {
   if (!button) return;
   button.disabled = isBusy;
   button.classList.toggle("qbit-adding", isBusy);
-  button.innerHTML = isBusy ? `<span class="button-spinner" aria-hidden="true"></span><span>处理中</span>` : actionText.replace("任务和文件", "");
+  const iconName = actionText === "开始" ? "play" : actionText === "停止" ? "stop" : "trash";
+  button.innerHTML = isBusy ? `<span class="button-spinner dark" aria-hidden="true"></span>` : icon(iconName);
 }
 
 async function toggleTorrentFiles(hash) {
   const holder = $(`files-${hash}`);
+  const toggle = $(`toggle-files-${hash}`);
   if (!holder) return;
   if (holder.dataset.open === "1") {
     holder.innerHTML = "";
     holder.dataset.open = "0";
+    if (toggle) {
+      toggle.innerHTML = icon("chevronDown");
+      toggle.title = "展开文件";
+      toggle.setAttribute("aria-label", "展开文件");
+      toggle.setAttribute("aria-expanded", "false");
+    }
     return;
   }
   holder.dataset.open = "1";
+  if (toggle) {
+    toggle.innerHTML = icon("chevronUp");
+    toggle.title = "收起文件";
+    toggle.setAttribute("aria-label", "收起文件");
+    toggle.setAttribute("aria-expanded", "true");
+  }
   holder.innerHTML = fileLoadingPanel("正在读取文件列表", "连接 qBittorrent，展开任务内文件和目录结构。", ["读取 qB", "生成文件树", "准备勾选"]);
   try {
     if (!state.torrentFiles[hash]) {
       const data = await getJson(`/api/qbit/torrents/${encodeURIComponent(hash)}/files`);
       state.torrentFiles[hash] = data.files || [];
     }
-    if (!state.targetSuggestions[hash]) {
-      holder.innerHTML = fileLoadingPanel("正在计算 Jellyfin 目标目录", "匹配已有目录，并查询 TMDb/LLM 生成符合规则的文件夹名。", ["匹配已有目录", "查询 TMDb", "LLM 命名"]);
-      const torrent = state.torrents.find((item) => item.hash === hash);
-      const data = await getJson(`/api/jellyfin/targets?query=${encodeURIComponent(torrent?.name || "")}`);
-      state.targetSuggestions[hash] = data.targets || [];
-    }
+    await ensureTargetSuggestions(hash, holder);
     state.selectedFiles[hash] = state.selectedFiles[hash] || new Set();
     renderTorrentFiles(hash);
   } catch (err) {
     holder.innerHTML = `<div class="mini-status">读取文件失败：${escapeHtml(err.message)}</div>`;
   }
+}
+
+function targetCacheKey(hash) {
+  return `bobsearch:targetSuggestions:${hash}`;
+}
+
+function readTargetSuggestionsCache(hash) {
+  try {
+    const raw = window.localStorage.getItem(targetCacheKey(hash));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeTargetSuggestionsCache(hash, targets) {
+  try {
+    window.localStorage.setItem(targetCacheKey(hash), JSON.stringify(targets || []));
+  } catch {
+    // Cache failure should not block file management.
+  }
+}
+
+async function ensureTargetSuggestions(hash, holder, force = false) {
+  if (!force && state.targetSuggestions[hash]) return;
+  if (!force) {
+    const cached = readTargetSuggestionsCache(hash);
+    if (cached) {
+      state.targetSuggestions[hash] = cached;
+      return;
+    }
+  }
+  holder.innerHTML = fileLoadingPanel("正在计算 Jellyfin 目标目录", "匹配已有目录，并查询 TMDb/LLM 生成符合规则的文件夹名。", ["匹配已有目录", "查询 TMDb", "LLM 命名"]);
+  const torrent = state.torrents.find((item) => item.hash === hash);
+  const data = await getJson(`/api/jellyfin/targets?query=${encodeURIComponent(torrent?.name || "")}`);
+  state.targetSuggestions[hash] = data.targets || [];
+  writeTargetSuggestionsCache(hash, state.targetSuggestions[hash]);
 }
 
 function fileLoadingPanel(title, text, steps) {
@@ -571,6 +631,7 @@ function renderTorrentFiles(hash) {
       </select>
       <button class="ghost" onclick="selectAllFiles('${escapeAttr(hash)}')">全选</button>
       <button class="ghost" onclick="clearSelectedFiles('${escapeAttr(hash)}')">清空</button>
+      <button class="ghost" onclick="clearTargetSuggestions('${escapeAttr(hash)}')">清除目录名</button>
       <button ${complete ? "" : "disabled"} onclick="moveSelected('${escapeAttr(hash)}')">移动勾选并清理</button>
     </div>
     <p id="targetReason-${escapeAttr(hash)}" class="target-reason">${targetReasonText(targets[0])}</p>
@@ -639,6 +700,20 @@ function selectAllFiles(hash) {
 function clearSelectedFiles(hash) {
   state.selectedFiles[hash] = new Set();
   renderTorrentFiles(hash);
+}
+
+async function clearTargetSuggestions(hash) {
+  const holder = $(`files-${hash}`);
+  if (!holder) return;
+  window.localStorage.removeItem(targetCacheKey(hash));
+  delete state.targetSuggestions[hash];
+  try {
+    await ensureTargetSuggestions(hash, holder, true);
+    renderTorrentFiles(hash);
+    $("torrentStatus").textContent = "已清除旧目录名并重新生成。";
+  } catch (err) {
+    holder.innerHTML = `<div class="mini-status">重新生成目录名失败：${escapeHtml(err.message)}</div>`;
+  }
 }
 
 async function moveSelected(hash) {

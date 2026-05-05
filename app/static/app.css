@@ -628,6 +628,11 @@ button.ghost {
   animation: spin 0.72s linear infinite;
 }
 
+.button-spinner.dark {
+  border-color: rgba(37, 99, 235, 0.24);
+  border-top-color: currentColor;
+}
+
 .link {
   color: var(--accent-strong);
   text-decoration: none;
@@ -696,18 +701,53 @@ button.ghost {
 
 .torrent-actions {
   display: grid;
-  grid-template-columns: repeat(2, 72px);
+  grid-template-columns: 1fr;
+  gap: 8px;
+  justify-content: end;
+  min-width: 156px;
+}
+
+.torrent-control-row {
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
   gap: 8px;
   justify-content: end;
 }
 
 .torrent-action {
-  width: 72px;
-  min-width: 72px;
+  width: 44px;
+  min-width: 44px;
   padding: 0;
   justify-self: end;
   white-space: nowrap;
   text-align: center;
+}
+
+.torrent-expand-btn {
+  width: 100%;
+  min-width: 0;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-btn svg polygon,
+.icon-btn svg rect {
+  fill: currentColor;
+  stroke: currentColor;
 }
 
 .torrent-action.danger {
@@ -1073,7 +1113,13 @@ button.ghost {
   }
 
   .torrent-actions {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+    min-width: 0;
+  }
+
+  .torrent-control-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     justify-content: stretch;
   }
 
@@ -1380,10 +1426,6 @@ button.ghost {
   }
 
   .resource-grid, .metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .torrent-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
