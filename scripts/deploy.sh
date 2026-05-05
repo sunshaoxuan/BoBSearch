@@ -99,7 +99,7 @@ fi
 
 expect <<EOF
 set timeout 900
-spawn ssh -o StrictHostKeyChecking=no $DEPLOY_SSH_USER@$DEPLOY_SSH_HOST "cd '$DEPLOY_TARGET_DIR' && echo '$DEPLOY_SSH_PASSWORD' | sudo -S sh -c '$compose_profiles_prefix docker compose up -d --build'"
+spawn ssh -o StrictHostKeyChecking=no $DEPLOY_SSH_USER@$DEPLOY_SSH_HOST "cd '$DEPLOY_TARGET_DIR' && echo '$DEPLOY_SSH_PASSWORD' | sudo -S sh -c '$compose_profiles_prefix docker compose up -d --build --remove-orphans'"
 expect -re {password:}
 send -- "$DEPLOY_SSH_PASSWORD\r"
 expect eof
