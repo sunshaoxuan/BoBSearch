@@ -6,6 +6,13 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.5] - 2026-05-06
+
+### Changed
+
+- Move-and-clean now replaces an existing same-name target file when the source file size differs, instead of failing and leaving the download task behind.
+- Existing same-size files are still skipped as complete, and no `.1` duplicate files are created.
+
 ## [1.0.4] - 2026-05-06
 
 ### Changed

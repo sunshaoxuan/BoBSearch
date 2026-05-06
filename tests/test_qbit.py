@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import httpx
 import pytest
@@ -144,7 +145,7 @@ def test_move_selected_missing_source_skips_when_destination_exists(tmp_path):
     assert moved[0]["missing_source"] == "true"
 
 
-def test_move_selected_file_rejects_existing_different_size(tmp_path):
+def test_move_selected_file_replaces_existing_different_size(tmp_path):
     cfg = settings(tmp_path)
     source = tmp_path / "config-downloads" / "movies-staging" / "Pack" / "Disc" / "Movie.mkv"
     source.parent.mkdir(parents=True)
@@ -153,10 +154,36 @@ def test_move_selected_file_rejects_existing_different_size(tmp_path):
     target.parent.mkdir(parents=True)
     target.write_text("different")
 
-    with pytest.raises(FileExistsError):
+    moved = move_selected_files(["Pack/Disc/Movie.mkv"], torrent(), "movies", "Movie (2026)", cfg)
+
+    assert moved[0]["replaced"] == "true"
+    assert target.read_text() == "movie"
+    assert not source.exists()
+    assert not (target.parent / "Movie.1.mkv").exists()
+
+
+def test_move_selected_file_replace_cleans_temp_on_copy_failure(monkeypatch, tmp_path):
+    cfg = settings(tmp_path)
+    source = tmp_path / "config-downloads" / "movies-staging" / "Pack" / "Disc" / "Movie.mkv"
+    source.parent.mkdir(parents=True)
+    source.write_text("movie")
+    target = tmp_path / "jellyfin" / "movies" / "Movie (2026)" / "Movie.mkv"
+    target.parent.mkdir(parents=True)
+    target.write_text("different")
+
+    def fake_copy(_source, destination):
+        Path(destination).write_text("partial")
+        raise OSError("copy failed")
+
+    monkeypatch.setattr("app.qbit.shutil.copy2", fake_copy)
+    monkeypatch.setattr("app.qbit.Path.replace", lambda self, target: (_ for _ in ()).throw(OSError("cross device")))
+
+    with pytest.raises(OSError, match="copy failed"):
         move_selected_files(["Pack/Disc/Movie.mkv"], torrent(), "movies", "Movie (2026)", cfg)
 
-    assert not (target.parent / "Movie.1.mkv").exists()
+    assert target.read_text() == "different"
+    assert source.read_text() == "movie"
+    assert not (target.parent / ".Movie.mkv.bobsearch-tmp").exists()
 
 
 def test_move_selected_folder_keeps_selected_folder_downward(tmp_path):
@@ -221,6 +248,22 @@ def test_move_series_video_skips_existing_same_size_without_suffix(tmp_path):
     moved = move_selected_files(["Pack/权力的游戏.S01E02.1080p.mkv"], torrent(), "series", "权力的游戏/Season 01", cfg)
 
     assert moved[0]["skipped"] == "true"
+    assert not (target.parent / "权力的游戏 - S01E02.1.mkv").exists()
+
+
+def test_move_series_video_replaces_existing_different_size(tmp_path):
+    cfg = settings(tmp_path)
+    source = tmp_path / "config-downloads" / "movies-staging" / "Pack" / "权力的游戏.S01E02.1080p.mkv"
+    source.parent.mkdir(parents=True)
+    source.write_text("new episode")
+    target = tmp_path / "jellyfin" / "series" / "权力的游戏" / "Season 01" / "权力的游戏 - S01E02.mkv"
+    target.parent.mkdir(parents=True)
+    target.write_text("old")
+
+    moved = move_selected_files(["Pack/权力的游戏.S01E02.1080p.mkv"], torrent(), "series", "权力的游戏/Season 01", cfg)
+
+    assert moved[0]["replaced"] == "true"
+    assert target.read_text() == "new episode"
     assert not (target.parent / "权力的游戏 - S01E02.1.mkv").exists()
 
 

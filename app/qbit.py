@@ -184,10 +184,35 @@ def move_or_skip_existing(source: Path, destination: Path) -> dict[str, str]:
     if destination.exists():
         if same_file_size(source, destination) or same_directory_tree(source, destination):
             return {"source": str(source), "destination": str(destination), "skipped": "true"}
-        raise FileExistsError(f"Target already exists with different content: {destination}")
+        if source.is_file() and destination.is_file():
+            replace_file(source, destination)
+            return {"source": str(source), "destination": str(destination), "replaced": "true", "skipped": "false"}
+        raise FileExistsError(f"Target directory already exists with different content: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source), str(destination))
     return {"source": str(source), "destination": str(destination), "skipped": "false"}
+
+
+def replace_file(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        source.replace(destination)
+        return
+    except OSError:
+        pass
+    temp = destination.with_name(f".{destination.name}.bobsearch-tmp")
+    if temp.exists():
+        temp.unlink()
+    try:
+        shutil.copy2(source, temp)
+        if temp.stat().st_size != source.stat().st_size:
+            raise OSError(f"Temporary copy size mismatch for {destination}")
+        temp.replace(destination)
+        source.unlink()
+    except Exception:
+        if temp.exists():
+            temp.unlink()
+        raise
 
 
 def compress_selected_paths(paths: list[str]) -> list[PurePosixPath]:
