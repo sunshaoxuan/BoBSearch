@@ -592,13 +592,23 @@ def test_jellyfin_target_suggestions_do_not_match_prior_sequel_folder(tmp_path):
     assert "续集" in reason or "年份不一致" in reason
 
 
+def test_jellyfin_target_suggestions_hide_low_confidence_existing_movie(tmp_path):
+    cfg = settings(tmp_path)
+    (tmp_path / "jellyfin" / "movies" / "Project Hail Mary (2026) [tmdbid-687163]").mkdir(parents=True)
+    query = "【高清剧集网发布 www.BPHDTV.com】黑夜告白[第03集].Light.to.the.Night.S01.2026.1080p"
+
+    suggestions = jellyfin_target_suggestions(query, cfg, include_fallback=False)
+
+    assert suggestions == []
+
+
 def test_llm_target_can_outrank_low_confidence_existing_prior_sequel(monkeypatch, tmp_path):
     async def run():
         cfg = settings(tmp_path)
         target = tmp_path / "jellyfin" / "movies" / "疯狂动物城 (2016) [tmdbid-269149]"
         target.mkdir(parents=True)
 
-        async def fake_llm(query, settings):
+        async def fake_llm(query, settings, file_names=None):
             return {
                 "category": "movies",
                 "folder": "疯狂动物城2 (2025) [tmdbid-1234567]",
@@ -622,7 +632,7 @@ def test_llm_target_existing_state_is_refreshed_from_filesystem(monkeypatch, tmp
         target = tmp_path / "jellyfin" / "movies" / "疯狂动物城2 (2025) [tmdbid-1084242]"
         target.mkdir(parents=True)
 
-        async def fake_llm(query, settings):
+        async def fake_llm(query, settings, file_names=None):
             return {
                 "category": "movies",
                 "folder": "疯狂动物城2 (2025) [tmdbid-1084242]",
@@ -710,6 +720,23 @@ def test_llm_series_target_strips_tmdb_id_from_folder():
     assert target["rename_plan"]["preview"] == "权力的游戏 - S01E02"
 
 
+def test_llm_series_target_does_not_require_tmdb_id():
+    target = folder_name_from_llm_target(
+        {
+            "category": "series",
+            "title": "Light to the Night",
+            "series_folder": "Light to the Night",
+            "season_number": 1,
+            "episode_numbers": [3],
+            "score": 0.93,
+            "reason": "文件名显示 S01E03",
+        }
+    )
+    assert target
+    assert target["folder"] == "Light to the Night/Season 01"
+    assert target["rename_plan"]["preview"] == "Light to the Night - S01E03"
+
+
 def test_tmdb_candidate_helpers_extract_clean_title():
     query = "【高清影视之家发布 www.BBQDDQ.com】 呼啸山庄[中文字幕].Wuthering.Heights.2026.1080p.iTunes.WEB-DL.mkv"
     assert release_search_text(query) == "Wuthering Heights 2026"
@@ -726,7 +753,7 @@ def test_jellyfin_target_suggestions_with_llm_adds_rule_folder(monkeypatch, tmp_
         cfg = settings(tmp_path)
         (tmp_path / "jellyfin" / "movies").mkdir(parents=True)
 
-        async def fake_llm(query, settings):
+        async def fake_llm(query, settings, file_names=None):
             return {
                 "category": "movies",
                 "folder": "Wuthering Heights (2026) [tmdbid-12345]",
@@ -739,5 +766,41 @@ def test_jellyfin_target_suggestions_with_llm_adds_rule_folder(monkeypatch, tmp_
         suggestions = await jellyfin_target_suggestions_with_llm("www.BBQDDQ.com Wuthering.Heights.2026.1080p.WEB-DL", cfg)
         assert suggestions[0]["folder"] == "Wuthering Heights (2026) [tmdbid-12345]"
         assert "高清" not in suggestions[0]["folder"]
+
+    asyncio.run(run())
+
+
+def test_target_generation_sends_file_context_to_llm(monkeypatch, tmp_path):
+    async def run():
+        cfg = settings(tmp_path)
+        (tmp_path / "jellyfin" / "series").mkdir(parents=True)
+
+        async def fake_llm(query, settings, file_names=None):
+            assert "黑夜告白[第03集]" in query
+            assert any("Light.to.the.Night.S01E03" in item for item in (file_names or []))
+            return {
+                "category": "series",
+                "folder": "黑夜告白/Season 01",
+                "score": 0.95,
+                "reason": "文件名显示 S01E03，按电视剧入库",
+                "existing": False,
+                "media_type": "series",
+                "series_folder": "黑夜告白",
+                "season_number": 1,
+                "episode_numbers": [3],
+                "target_folder": "黑夜告白/Season 01",
+            }
+
+        monkeypatch.setattr("app.qbit.llm_generated_target_suggestion", fake_llm)
+        suggestions = await jellyfin_target_suggestions_with_llm(
+            "【高清剧集网发布 www.BPHDTV.com】黑夜告白[第03集][国语配音+中文字幕].Light.to.the.Night.S01.2026.1080p.WEB-DL.H264.AAC-BlackTV",
+            cfg,
+            file_names=["Light.to.the.Night.S01E03.2026.1080p.WEB-DL.H264.AAC-BlackTV.mkv"],
+        )
+
+        assert suggestions[0]["category"] == "series"
+        assert suggestions[0]["folder"] == "黑夜告白/Season 01"
+        assert suggestions[0]["episode_numbers"] == [3]
+        assert all(item["category"] != "movies" for item in suggestions)
 
     asyncio.run(run())

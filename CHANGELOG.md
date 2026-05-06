@@ -6,6 +6,13 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.6] - 2026-05-06
+
+### Changed
+
+- Jellyfin target generation now sends the qBittorrent task name plus its file list to the large model, so episode evidence inside downloaded file names can drive movie-vs-series classification.
+- Download-task folder generation prompts the large model to treat episode releases as TV series and return `series/<show>/Season NN` targets with episode rename metadata.
+
 ## [1.0.5] - 2026-05-06
 
 ### Changed

@@ -817,9 +817,12 @@ function writeTargetSuggestionsCache(hash, targets) {
 
 async function ensureTargetSuggestions(hash, holder, force = false) {
   if (!force && state.targetSuggestions[hash]) return;
-  holder.innerHTML = fileLoadingPanel("正在计算 Jellyfin 目标目录", "匹配已有目录，并查询 TMDb/大模型生成符合规则的文件夹名。", ["匹配已有目录", "查询 TMDb", "大模型命名"]);
+  holder.innerHTML = fileLoadingPanel("正在计算 Jellyfin 目标目录", "读取任务名和文件列表，交给大模型判断电影/电视剧并生成目录。", ["整理文件名", "查询 TMDb", "大模型命名"]);
   const torrent = state.torrents.find((item) => item.hash === hash);
-  const data = await getJson(`/api/jellyfin/targets?query=${encodeURIComponent(torrent?.name || "")}`);
+  const data = await postJson("/api/jellyfin/targets", {
+    query: torrent?.name || "",
+    file_names: allFilePaths(state.torrentFiles[hash] || []),
+  });
   state.targetSuggestions[hash] = data.targets || [];
   writeTargetSuggestionsCache(hash, state.targetSuggestions[hash]);
 }

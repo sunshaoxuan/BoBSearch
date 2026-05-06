@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import Settings, get_settings
 from .history import SearchHistoryStore
-from .models import MoveSelectedRequest, RefreshTargetsRequest, SearchResponse
+from .models import MoveSelectedRequest, RefreshTargetsRequest, SearchResponse, TargetSuggestionsRequest
 from .qbit import QbitClient, jellyfin_target_suggestions_with_llm, qbit_health, refresh_targets_existing
 from .search import load_indexers, search_and_enrich
 
@@ -224,6 +224,11 @@ async def api_qbit_delete_with_files(torrent_hash: str, _: None = Depends(requir
 @app.get("/api/jellyfin/targets")
 async def api_jellyfin_targets(query: str, _: None = Depends(require_login)):
     return {"targets": await jellyfin_target_suggestions_with_llm(query, get_settings())}
+
+
+@app.post("/api/jellyfin/targets")
+async def api_jellyfin_targets_with_context(payload: TargetSuggestionsRequest, _: None = Depends(require_login)):
+    return {"targets": await jellyfin_target_suggestions_with_llm(payload.query, get_settings(), file_names=payload.file_names)}
 
 
 @app.post("/api/jellyfin/targets/refresh")

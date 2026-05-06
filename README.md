@@ -1,6 +1,6 @@
 # BoBSearch
 
-Current release: **1.0.5**
+Current release: **1.0.6**
 
 BoBSearch is a self-hosted media search and download management console. It searches Jackett indexers, deduplicates results, uses an OpenAI-compatible LLM to summarize releases, adds selected resources to qBittorrent, and moves completed downloads into a Jellyfin library.
 
@@ -16,6 +16,7 @@ Only BoBSearch needs to be exposed to users. qBittorrent and Jackett can either 
 - Start, stop, and delete qBittorrent tasks, including delete-with-files cleanup.
 - Generate Jellyfin movie folder names using existing folder rules and TMDb IDs.
 - Move TV episodes into `series/<show>/Season NN` and rename video files in Jellyfin-compatible `Show - SxxEyy.ext` form.
+- Use qBittorrent file lists as LLM context when generating Jellyfin targets, so episode files can be classified as series even when the task name is noisy.
 - Keep the last 30 successful searches in server-side history so refreshes and repeated review do not rerun Jackett or LLM.
 - Retry-safe Jellyfin moves: already moved files with matching destinations are skipped and qB cleanup still completes.
 - Download Management refreshes every 15 seconds while preserving expanded task panels.

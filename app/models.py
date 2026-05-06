@@ -105,6 +105,11 @@ class RefreshTargetsRequest(BaseModel):
     targets: list[dict]
 
 
+class TargetSuggestionsRequest(BaseModel):
+    query: str
+    file_names: list[str] = Field(default_factory=list)
+
+
 class MoveSelectedResponse(BaseModel):
     ok: bool
     moved: list[dict[str, str]] = Field(default_factory=list)

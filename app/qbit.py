@@ -19,6 +19,7 @@ ALLOWED_JELLYFIN_CATEGORIES = {"movies", "series", "other"}
 TARGET_CATEGORY_ORDER = ("movies", "series", "other")
 NAMING_EXAMPLE_LIMIT = 80
 TMDB_CANDIDATE_LIMIT = 6
+MIN_EXISTING_TARGET_SCORE = 0.35
 VIDEO_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".webm"}
 SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".vtt", ".sub", ".sup"}
 
@@ -332,7 +333,7 @@ def folder_name_from_llm_target(target: dict[str, Any]) -> dict[str, Any] | None
     tmdb_id = str(target.get("tmdb_id") or target.get("tmdbid") or "").strip()
     folder = str(target.get("folder") or "").strip()
     reason = str(target.get("reason") or "LLM 根据 TMDb 信息生成").strip()
-    if category not in ALLOWED_JELLYFIN_CATEGORIES or not title or not re.fullmatch(r"\d{4}", year) or not re.fullmatch(r"\d+", tmdb_id):
+    if category not in ALLOWED_JELLYFIN_CATEGORIES or not title:
         return None
     if category == "series":
         season_number = int(target.get("season_number") or 0)
@@ -355,8 +356,10 @@ def folder_name_from_llm_target(target: dict[str, Any]) -> dict[str, Any] | None
             reason=reason[:120],
             existing=False,
             episode_title=str(target.get("episode_title") or "").strip() or None,
-            tmdb_id=tmdb_id,
+            tmdb_id=tmdb_id if re.fullmatch(r"\d+", tmdb_id) else None,
         )
+    if not re.fullmatch(r"\d{4}", year) or not re.fullmatch(r"\d+", tmdb_id):
+        return None
     expected = f"{title} ({year}) [tmdbid-{tmdb_id}]"
     if not folder:
         folder = expected
@@ -468,21 +471,40 @@ async def tmdb_web_candidates(query: str) -> list[dict[str, Any]]:
     return candidates
 
 
-async def llm_generated_target_suggestion(query: str, settings: Settings) -> dict[str, Any] | None:
-    tmdb_candidates = await tmdb_web_candidates(query)
+def target_llm_file_context(file_names: list[str] | None) -> list[str]:
+    cleaned: list[str] = []
+    for name in file_names or []:
+        value = str(name or "").strip()
+        if not value:
+            continue
+        cleaned.append(value[:500])
+        if len(cleaned) >= 40:
+            break
+    return cleaned
+
+
+async def llm_generated_target_suggestion(query: str, settings: Settings, file_names: list[str] | None = None) -> dict[str, Any] | None:
+    file_context = target_llm_file_context(file_names)
+    tmdb_query = " ".join([query, *file_context[:8]])
+    tmdb_candidates = await tmdb_web_candidates(tmdb_query)
     prompt = {
-        "task": "Identify the media in a qBittorrent release name and generate one Jellyfin folder target.",
+        "task": "Identify the media in a qBittorrent download task and generate one Jellyfin folder target.",
         "release_name": query,
+        "download_file_names": file_context,
         "cleaned_search_text": release_search_text(query),
         "tmdb_candidates_from_web_search": tmdb_candidates,
         "existing_folder_style_examples": naming_examples(settings),
         "required_folder_format": "movies: Title (YYYY) [tmdbid-NUMBER]; series: Series Title/Season NN",
-        "episode_info_from_release_name": parse_episode_info(query),
         "rules": [
-            "Find the actual movie/series title from the release name; ignore release groups, websites, codecs, quality, audio, subtitles and container text.",
+            "Use both release_name and download_file_names. File names are decisive when they reveal the actual media.",
+            "Find the actual movie/series title; ignore release groups, websites, codecs, quality, audio, subtitles and container text.",
+            "If release_name or any download_file_names indicate a specific episode, classify it as series, not movie. Episode markers can be in Chinese, English, numeric season/episode forms, or mixed release notation.",
+            "For series, infer season_number and episode_numbers from the most specific evidence in release_name or download_file_names.",
             "Use TMDb as the ID source. Prefer the provided TMDb web-search candidates when they match the release name.",
             "For Chinese releases, prefer the title style already used by Jellyfin/TMDb Chinese metadata if clear; otherwise use the official English title.",
+            "For series, TMDb ID is optional because the target folder does not include it. If the task/file evidence clearly identifies a series episode, return a series target even when TMDb candidates are weak or absent.",
             "For series, return category=series, title/series_folder without year or TMDb ID, season_number and episode_numbers. The final Jellyfin path is series_folder/Season NN.",
+            "Do not classify as a movie only because TMDb candidates include a movie; reconcile candidates against the file names first.",
             "Do not return a folder based on release group names or website names.",
             "If the TMDb item cannot be identified confidently, return {\"target\": null}.",
             "Return strict JSON only.",
@@ -603,7 +625,9 @@ def jellyfin_target_suggestions(query: str, settings: Settings, limit: int = 24,
             if not child.is_dir():
                 continue
             score, reason = target_score(query, child.name)
-            if score <= 0:
+            if category != "series" and score < MIN_EXISTING_TARGET_SCORE:
+                continue
+            if category == "series" and score <= 0:
                 continue
             if category == "series":
                 if not episode_info:
@@ -661,9 +685,14 @@ def jellyfin_target_suggestions(query: str, settings: Settings, limit: int = 24,
     return suggestions[:limit]
 
 
-async def jellyfin_target_suggestions_with_llm(query: str, settings: Settings, limit: int = 24) -> list[dict[str, Any]]:
+async def jellyfin_target_suggestions_with_llm(
+    query: str,
+    settings: Settings,
+    limit: int = 24,
+    file_names: list[str] | None = None,
+) -> list[dict[str, Any]]:
     suggestions = jellyfin_target_suggestions(query, settings, limit=limit, include_fallback=False)
-    llm_target = await llm_generated_target_suggestion(query, settings)
+    llm_target = await llm_generated_target_suggestion(query, settings, file_names=file_names)
     if llm_target and not any(item["category"] == llm_target["category"] and item["folder"] == llm_target["folder"] for item in suggestions):
         suggestions.append(llm_target)
     return refresh_targets_existing(suggestions, settings)[:limit]
