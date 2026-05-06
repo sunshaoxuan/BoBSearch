@@ -11,6 +11,7 @@ All notable changes to BoBSearch will be documented in this file.
 - Cached Jellyfin target-folder suggestions with a manual clear/regenerate action.
 - Safer Jellyfin target matching for sequels and release-year mismatches.
 - Modal progress overlay while moving selected downloads into Jellyfin and cleaning qB tasks.
+- Download Management auto-refresh every 15 seconds while the tab is active.
 
 ## [1.0.0] - 2026-05-05
 

@@ -1,4 +1,5 @@
 const PAGE_SIZE = 50;
+const DOWNLOAD_REFRESH_MS = 15000;
 const state = {
   query: "",
   response: null,
@@ -18,6 +19,8 @@ const state = {
   selectedFiles: {},
   torrentActions: new Set(),
   movingHash: null,
+  torrentsRefreshing: false,
+  torrentRefreshTimer: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -406,6 +409,8 @@ function setStatusDone(text, isError = false) {
 
 async function loadTorrents(force = false) {
   if (state.movingHash && !force) return;
+  if (state.torrentsRefreshing) return;
+  state.torrentsRefreshing = true;
   $("torrentStatus").textContent = "正在读取 qB 下载清单...";
   try {
     const data = await getJson("/api/qbit/torrents");
@@ -416,6 +421,8 @@ async function loadTorrents(force = false) {
     $("torrentStatus").textContent = state.torrents.length ? `已读取 ${state.torrents.length} 个 qB 任务。` : "qB 暂无任务。";
   } catch (err) {
     $("torrentStatus").textContent = `读取失败：${err.message}`;
+  } finally {
+    state.torrentsRefreshing = false;
   }
 }
 
@@ -443,7 +450,25 @@ function setTab(tab) {
   $("downloadsSideCard").classList.toggle("hidden", tab !== "downloads");
   if (tab === "downloads") {
     loadTorrents();
+    startTorrentAutoRefresh();
+  } else {
+    stopTorrentAutoRefresh();
   }
+}
+
+function startTorrentAutoRefresh() {
+  if (state.torrentRefreshTimer) return;
+  state.torrentRefreshTimer = window.setInterval(() => {
+    if (state.activeTab === "downloads" && !state.movingHash) {
+      loadTorrents();
+    }
+  }, DOWNLOAD_REFRESH_MS);
+}
+
+function stopTorrentAutoRefresh() {
+  if (!state.torrentRefreshTimer) return;
+  window.clearInterval(state.torrentRefreshTimer);
+  state.torrentRefreshTimer = null;
 }
 
 function renderTorrents() {
