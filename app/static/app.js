@@ -426,7 +426,7 @@ function setStatusDone(text, isError = false) {
 
 async function loadTorrents(force = false) {
   if (state.movingHash && !force) return;
-  if (state.torrentsRefreshing) return;
+  if (state.torrentsRefreshing && !force) return;
   state.torrentsRefreshing = true;
   $("torrentStatus").textContent = "正在读取 qB 下载清单...";
   try {
@@ -978,6 +978,9 @@ async function moveSelected(hash) {
     delete state.selectedFiles[hash];
     delete state.targetSuggestions[hash];
     state.openTorrentFiles.delete(hash);
+    state.torrents = state.torrents.filter((torrent) => torrent.hash !== hash);
+    renderTorrents();
+    renderDownloadSummary();
     await loadTorrents(true);
   } catch (err) {
     $("torrentStatus").textContent = `移动失败，qB 任务和剩余文件已保留：${err.message}`;

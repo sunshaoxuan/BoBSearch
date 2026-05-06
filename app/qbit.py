@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import shutil
 import re
 import json
@@ -843,6 +844,13 @@ class QbitClient:
                 return torrent
         raise ValueError("Torrent not found")
 
+    async def torrent_exists(self, torrent_hash: str) -> bool:
+        try:
+            await self.torrent(torrent_hash)
+            return True
+        except ValueError:
+            return False
+
     async def files(self, torrent_hash: str) -> list[dict[str, Any]]:
         await self.ensure_login()
         await self.torrent(torrent_hash)
@@ -880,6 +888,11 @@ class QbitClient:
             data={"hashes": torrent_hash, "deleteFiles": "true" if delete_files else "false"},
         )
         r.raise_for_status()
+        for _ in range(10):
+            if not await self.torrent_exists(torrent_hash):
+                return
+            await asyncio.sleep(0.3)
+        raise RuntimeError("qBittorrent delete returned success but task still exists")
 
     async def move_selected(
         self,

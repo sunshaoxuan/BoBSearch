@@ -6,6 +6,18 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.2] - 2026-05-06
+
+### Changed
+
+- qBittorrent delete now verifies that the task actually disappears after `deleteFiles=true`.
+- Move-and-clean removes the completed task from the UI immediately, then forces a qB refresh even if the 15-second auto-refresh is running.
+
+### Fixed
+
+- Fixed a case where moved or skipped files were treated as complete but the qB task could remain visible or remain undeleted.
+- Fixed forced qB refresh being blocked by an in-flight automatic refresh after a move-and-clean operation.
+
 ## [1.0.1] - 2026-05-06
 
 ### Added

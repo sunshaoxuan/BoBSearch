@@ -409,11 +409,43 @@ def test_delete_torrent_can_delete_files(monkeypatch, tmp_path):
             calls.append((endpoint, data))
             return mock_response()
 
+        async def fake_exists(_hash):
+            return False
+
         monkeypatch.setattr(client, "login", fake_login)
         monkeypatch.setattr(client.client, "post", fake_post)
+        monkeypatch.setattr(client, "torrent_exists", fake_exists)
 
         await client.delete_torrent("abc", delete_files=True)
         assert calls == [("/api/v2/torrents/delete", {"hashes": "abc", "deleteFiles": "true"})]
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_delete_torrent_raises_when_task_remains(monkeypatch, tmp_path):
+    async def run():
+        client = QbitClient(settings(tmp_path))
+
+        async def fake_login():
+            client.logged_in = True
+
+        async def fake_post(endpoint, data):
+            return mock_response()
+
+        async def fake_exists(_hash):
+            return True
+
+        async def fake_sleep(_seconds):
+            return None
+
+        monkeypatch.setattr(client, "login", fake_login)
+        monkeypatch.setattr(client.client, "post", fake_post)
+        monkeypatch.setattr(client, "torrent_exists", fake_exists)
+        monkeypatch.setattr("app.qbit.asyncio.sleep", fake_sleep)
+
+        with pytest.raises(RuntimeError, match="task still exists"):
+            await client.delete_torrent("abc", delete_files=True)
         await client.close()
 
     asyncio.run(run())
