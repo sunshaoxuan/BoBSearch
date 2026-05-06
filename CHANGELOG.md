@@ -6,6 +6,13 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.7] - 2026-05-06
+
+### Changed
+
+- Series target choices now show only the real Jellyfin directory, for example `series/黑夜告白/Season 01`.
+- Episode codes such as `S01E03` and rename previews are displayed in the explanation line instead of being mixed into the target folder label.
+
 ## [1.0.6] - 2026-05-06
 
 ### Changed

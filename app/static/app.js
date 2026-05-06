@@ -881,12 +881,9 @@ function renderTorrentFiles(hash) {
 }
 
 function targetOption(target) {
-  const episode = target.media_type === "series" && target.season_number && (target.episode_numbers || []).length
-    ? ` · ${episodeLabel(target.season_number, target.episode_numbers)}`
-    : "";
   const disabled = target.disabled ? " · 不可移动" : "";
   const stateLabel = target.existing ? "现存" : "新建";
-  const label = `${target.category}/${target.target_folder || target.folder}${episode} · ${stateLabel} · ${Math.round((target.score || 0) * 100)}%${disabled}`;
+  const label = `${target.category}/${target.target_folder || target.folder} · ${stateLabel} · ${Math.round((target.score || 0) * 100)}%${disabled}`;
   const value = `${target.category}\t${target.folder}`;
   return `<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`;
 }
@@ -900,9 +897,12 @@ function episodeLabel(season, episodes) {
 function targetReasonText(target) {
   if (!target) return "";
   const reason = target.reason ? `：${target.reason}` : "";
+  const episode = target.media_type === "series" && target.season_number && (target.episode_numbers || []).length
+    ? `；季集：${episodeLabel(target.season_number, target.episode_numbers)}`
+    : "";
   const rename = target.rename_plan?.preview ? `；重命名预览：${target.rename_plan.preview}` : "";
   const disabled = target.disabled ? "；无法识别季集号，不能自动移动" : "";
-  return `匹配说明${reason}${rename}${disabled}`;
+  return `匹配说明${reason}${episode}${rename}${disabled}`;
 }
 
 function updateTargetReason(hash) {
