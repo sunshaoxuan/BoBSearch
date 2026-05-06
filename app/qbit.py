@@ -18,6 +18,8 @@ ALLOWED_JELLYFIN_CATEGORIES = {"movies", "series", "other"}
 TARGET_CATEGORY_ORDER = ("movies", "series", "other")
 NAMING_EXAMPLE_LIMIT = 80
 TMDB_CANDIDATE_LIMIT = 6
+VIDEO_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".webm"}
+SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".vtt", ".sub", ".sup"}
 
 
 def safe_relative_path(value: str) -> PurePosixPath:
@@ -29,6 +31,115 @@ def safe_relative_path(value: str) -> PurePosixPath:
 
 def safe_target_folder(value: str) -> PurePosixPath:
     return safe_relative_path(value)
+
+
+def season_folder_name(season_number: int) -> str:
+    return f"Season {season_number:02d}"
+
+
+def parse_episode_info(value: str) -> dict[str, Any] | None:
+    text = str(value or "")
+    patterns = [
+        r"(?i)(?:^|[^a-z0-9])s(?:eason)?\s*0*(\d{1,2})\s*e(?:p(?:isode)?)?\s*0*(\d{1,3})(?:\s*(?:-|~|–|—|to)\s*e?\s*0*(\d{1,3}))?",
+        r"(?i)(?:^|[^a-z0-9])0*(\d{1,2})x0*(\d{1,3})(?:\s*(?:-|~|–|—|to)\s*0*(\d{1,3}))?",
+        r"第\s*0*(\d{1,2})\s*季\s*第?\s*0*(\d{1,3})\s*(?:集|话|話)(?:\s*(?:-|~|–|—|至)\s*第?\s*0*(\d{1,3})\s*(?:集|话|話)?)?",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        season = int(match.group(1))
+        first = int(match.group(2))
+        last = int(match.group(3)) if match.group(3) else first
+        if season <= 0 or first <= 0 or last < first:
+            return None
+        return {"season_number": season, "episode_numbers": list(range(first, last + 1))}
+    return None
+
+
+def episode_code(season_number: int, episode_numbers: list[int]) -> str:
+    if len(episode_numbers) > 1:
+        return f"S{season_number:02d}E{episode_numbers[0]:02d}-E{episode_numbers[-1]:02d}"
+    return f"S{season_number:02d}E{episode_numbers[0]:02d}"
+
+
+def series_rename_base(series_folder: str, season_number: int, episode_numbers: list[int], episode_title: str | None = None) -> str:
+    base = f"{series_folder} - {episode_code(season_number, episode_numbers)}"
+    if episode_title:
+        title = re.sub(r"[\\/:*?\"<>|]+", " ", episode_title).strip()
+        if title:
+            base = f"{base} - {title[:80]}"
+    return base
+
+
+def clean_series_folder_name(value: str) -> str:
+    without_id = re.sub(r"\s*\[(?:tmdbid-)?\d+\]\s*$", "", str(value or "").strip()).strip()
+    return re.sub(r"\s*\(\d{4}\)\s*$", "", without_id).strip()
+
+
+def target_with_defaults(target: dict[str, Any]) -> dict[str, Any]:
+    folder = str(target.get("folder") or target.get("target_folder") or "").strip()
+    category = str(target.get("category") or "movies").strip()
+    target["category"] = category
+    target["folder"] = folder
+    target["target_folder"] = folder
+    target.setdefault("media_type", "series" if category == "series" else "movie" if category == "movies" else "other")
+    return target
+
+
+def refresh_target_existing(target: dict[str, Any], settings: Settings) -> dict[str, Any]:
+    target = target_with_defaults(dict(target))
+    category = target["category"]
+    folder = target["folder"]
+    try:
+        target["existing"] = jellyfin_target_path(category, folder, settings).exists()
+    except ValueError:
+        target["existing"] = False
+    return target
+
+
+def refresh_targets_existing(targets: list[dict[str, Any]], settings: Settings) -> list[dict[str, Any]]:
+    refreshed = [refresh_target_existing(target, settings) for target in targets]
+    refreshed.sort(key=lambda item: (item["score"], item["existing"], item["category"] == "series"), reverse=True)
+    return refreshed
+
+
+def series_target(
+    series_folder: str,
+    season_number: int,
+    episode_numbers: list[int],
+    score: float,
+    reason: str,
+    existing: bool,
+    episode_title: str | None = None,
+    tmdb_id: str | None = None,
+) -> dict[str, Any]:
+    series_folder = clean_series_folder_name(series_folder)
+    season_folder = season_folder_name(season_number)
+    folder = f"{series_folder}/{season_folder}"
+    preview = series_rename_base(series_folder, season_number, episode_numbers, episode_title)
+    return {
+        "category": "series",
+        "folder": folder,
+        "target_folder": folder,
+        "media_type": "series",
+        "series_folder": series_folder,
+        "season_number": season_number,
+        "season_folder": season_folder,
+        "episode_numbers": episode_numbers,
+        "episode_title": episode_title,
+        "tmdb_id": tmdb_id,
+        "rename_plan": {
+            "enabled": True,
+            "preview": preview,
+            "season_number": season_number,
+            "episode_numbers": episode_numbers,
+        },
+        "score": score,
+        "reason": reason,
+        "existing": existing,
+        "disabled": False,
+    }
 
 
 def ensure_inside(path: Path, root: Path) -> Path:
@@ -50,6 +161,32 @@ def unique_destination(path: Path) -> Path:
         if not candidate.exists():
             return candidate
     raise FileExistsError(f"Could not create unique destination for {path}")
+
+
+def same_file_size(source: Path, destination: Path) -> bool:
+    return source.is_file() and destination.is_file() and source.stat().st_size == destination.stat().st_size
+
+
+def same_directory_tree(source: Path, destination: Path) -> bool:
+    if not source.is_dir() or not destination.is_dir():
+        return False
+    source_files = sorted(path for path in source.rglob("*") if path.is_file())
+    destination_files = sorted(path for path in destination.rglob("*") if path.is_file())
+    source_rel = [path.relative_to(source).as_posix() for path in source_files]
+    destination_rel = [path.relative_to(destination).as_posix() for path in destination_files]
+    if source_rel != destination_rel:
+        return False
+    return all(source_file.stat().st_size == (destination / rel).stat().st_size for source_file, rel in zip(source_files, source_rel))
+
+
+def move_or_skip_existing(source: Path, destination: Path) -> dict[str, str]:
+    if destination.exists():
+        if same_file_size(source, destination) or same_directory_tree(source, destination):
+            return {"source": str(source), "destination": str(destination), "skipped": "true"}
+        raise FileExistsError(f"Target already exists with different content: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(source), str(destination))
+    return {"source": str(source), "destination": str(destination), "skipped": "false"}
 
 
 def compress_selected_paths(paths: list[str]) -> list[PurePosixPath]:
@@ -124,8 +261,7 @@ def normalize_media_text(value: str) -> str:
 
 
 def display_name_without_ids(folder: str) -> str:
-    without_id = re.sub(r"\s*\[(?:tmdbid-)?\d+\]\s*$", "", folder).strip()
-    return re.sub(r"\s*\(\d{4}\)\s*$", "", without_id).strip()
+    return clean_series_folder_name(folder)
 
 
 def folder_year(folder: str) -> str | None:
@@ -172,6 +308,29 @@ def folder_name_from_llm_target(target: dict[str, Any]) -> dict[str, Any] | None
     reason = str(target.get("reason") or "LLM 根据 TMDb 信息生成").strip()
     if category not in ALLOWED_JELLYFIN_CATEGORIES or not title or not re.fullmatch(r"\d{4}", year) or not re.fullmatch(r"\d+", tmdb_id):
         return None
+    if category == "series":
+        season_number = int(target.get("season_number") or 0)
+        raw_episodes = target.get("episode_numbers") or []
+        if not isinstance(raw_episodes, list):
+            raw_episodes = [raw_episodes]
+        episode_numbers = [int(item) for item in raw_episodes if str(item).isdigit()]
+        if season_number <= 0 or not episode_numbers:
+            return None
+        series_folder = clean_series_folder_name(str(target.get("series_folder") or title).strip())
+        try:
+            safe_target_folder(f"{series_folder}/{season_folder_name(season_number)}")
+        except ValueError:
+            return None
+        return series_target(
+            series_folder=series_folder,
+            season_number=season_number,
+            episode_numbers=episode_numbers,
+            score=float(target.get("score") or 0.86),
+            reason=reason[:120],
+            existing=False,
+            episode_title=str(target.get("episode_title") or "").strip() or None,
+            tmdb_id=tmdb_id,
+        )
     expected = f"{title} ({year}) [tmdbid-{tmdb_id}]"
     if not folder:
         folder = expected
@@ -181,13 +340,13 @@ def folder_name_from_llm_target(target: dict[str, Any]) -> dict[str, Any] | None
         safe_target_folder(folder)
     except ValueError:
         return None
-    return {
+    return target_with_defaults({
         "category": category,
         "folder": folder,
         "score": float(target.get("score") or 0.86),
         "reason": reason[:120],
         "existing": False,
-    }
+    })
 
 
 def naming_examples(settings: Settings, limit: int = NAMING_EXAMPLE_LIMIT) -> list[dict[str, str]]:
@@ -199,7 +358,14 @@ def naming_examples(settings: Settings, limit: int = NAMING_EXAMPLE_LIMIT) -> li
         if not root.exists():
             continue
         for child in sorted(root.iterdir(), key=lambda path: path.name.casefold()):
-            if child.is_dir() and pattern.fullmatch(child.name):
+            if not child.is_dir():
+                continue
+            if category == "series":
+                seasons = [season.name for season in child.iterdir() if season.is_dir() and re.fullmatch(r"Season \d{2}", season.name)]
+                examples.append({"category": category, "folder": child.name, "season_examples": ", ".join(sorted(seasons)[:3])})
+                if len(examples) >= limit:
+                    return examples
+            elif pattern.fullmatch(child.name):
                 examples.append({"category": category, "folder": child.name})
                 if len(examples) >= limit:
                     return examples
@@ -284,11 +450,13 @@ async def llm_generated_target_suggestion(query: str, settings: Settings) -> dic
         "cleaned_search_text": release_search_text(query),
         "tmdb_candidates_from_web_search": tmdb_candidates,
         "existing_folder_style_examples": naming_examples(settings),
-        "required_folder_format": "Title (YYYY) [tmdbid-NUMBER]",
+        "required_folder_format": "movies: Title (YYYY) [tmdbid-NUMBER]; series: Series Title/Season NN",
+        "episode_info_from_release_name": parse_episode_info(query),
         "rules": [
             "Find the actual movie/series title from the release name; ignore release groups, websites, codecs, quality, audio, subtitles and container text.",
             "Use TMDb as the ID source. Prefer the provided TMDb web-search candidates when they match the release name.",
             "For Chinese releases, prefer the title style already used by Jellyfin/TMDb Chinese metadata if clear; otherwise use the official English title.",
+            "For series, return category=series, title/series_folder without year or TMDb ID, season_number and episode_numbers. The final Jellyfin path is series_folder/Season NN.",
             "Do not return a folder based on release group names or website names.",
             "If the TMDb item cannot be identified confidently, return {\"target\": null}.",
             "Return strict JSON only.",
@@ -299,7 +467,11 @@ async def llm_generated_target_suggestion(query: str, settings: Settings) -> dic
                 "title": "folder title without year/id",
                 "year": "YYYY",
                 "tmdb_id": "digits only",
-                "folder": "Title (YYYY) [tmdbid-NUMBER]",
+                "folder": "movie folder only; leave empty for series",
+                "series_folder": "series folder name without id, for category=series",
+                "season_number": 1,
+                "episode_numbers": [1],
+                "episode_title": "optional",
                 "score": 0.0,
                 "reason": "short Chinese explanation",
             }
@@ -396,6 +568,7 @@ def target_score(query: str, folder: str) -> tuple[float, str]:
 def jellyfin_target_suggestions(query: str, settings: Settings, limit: int = 24, include_fallback: bool = True) -> list[dict[str, Any]]:
     suggestions: list[dict[str, Any]] = []
     library = Path(settings.jellyfin_library_path)
+    episode_info = parse_episode_info(query)
     for category in TARGET_CATEGORY_ORDER:
         root = library / category
         if not root.exists():
@@ -406,26 +579,58 @@ def jellyfin_target_suggestions(query: str, settings: Settings, limit: int = 24,
             score, reason = target_score(query, child.name)
             if score <= 0:
                 continue
-            suggestions.append(
+            if category == "series":
+                if not episode_info:
+                    suggestions.append(
+                        target_with_defaults(
+                            {
+                                "category": "series",
+                                "folder": child.name,
+                                "score": min(score, 0.4),
+                                "reason": f"{reason}；无法识别季集号",
+                                "existing": True,
+                                "media_type": "series",
+                                "series_folder": child.name,
+                                "disabled": True,
+                            }
+                        )
+                    )
+                    continue
+                suggestions.append(
+                    series_target(
+                        series_folder=child.name,
+                        season_number=episode_info["season_number"],
+                        episode_numbers=episode_info["episode_numbers"],
+                        score=score,
+                        reason=reason,
+                        existing=True,
+                    )
+                )
+            elif not episode_info:
+                suggestions.append(
+                    target_with_defaults(
+                        {
+                            "category": category,
+                            "folder": child.name,
+                            "score": score,
+                            "reason": reason,
+                            "existing": True,
+                        }
+                    )
+                )
+    suggestions = refresh_targets_existing(suggestions, settings)
+    generated = generated_folder_name(query)
+    if include_fallback and not episode_info and not any(item["category"] == "movies" and item["folder"] == generated for item in suggestions):
+        suggestions.append(
+            target_with_defaults(
                 {
-                    "category": category,
-                    "folder": child.name,
-                    "score": score,
-                    "reason": reason,
-                    "existing": True,
+                    "category": "movies",
+                    "folder": generated,
+                    "score": 0.2,
+                    "reason": "自动生成的新目录名",
+                    "existing": False,
                 }
             )
-    suggestions.sort(key=lambda item: (item["score"], item["category"] == "movies"), reverse=True)
-    generated = generated_folder_name(query)
-    if include_fallback and not any(item["category"] == "movies" and item["folder"] == generated for item in suggestions):
-        suggestions.append(
-            {
-                "category": "movies",
-                "folder": generated,
-                "score": 0.2,
-                "reason": "自动生成的新目录名",
-                "existing": False,
-            }
         )
     return suggestions[:limit]
 
@@ -435,8 +640,7 @@ async def jellyfin_target_suggestions_with_llm(query: str, settings: Settings, l
     llm_target = await llm_generated_target_suggestion(query, settings)
     if llm_target and not any(item["category"] == llm_target["category"] and item["folder"] == llm_target["folder"] for item in suggestions):
         suggestions.append(llm_target)
-    suggestions.sort(key=lambda item: (item["score"], item["existing"], item["category"] == "movies"), reverse=True)
-    return suggestions[:limit]
+    return refresh_targets_existing(suggestions, settings)[:limit]
 
 
 def qbit_path_to_local(path: str, settings: Settings) -> Path:
@@ -461,18 +665,112 @@ def jellyfin_target_path(category: str, folder: str, settings: Settings) -> Path
     return ensure_inside(root.joinpath(*rel.parts), Path(settings.jellyfin_library_path))
 
 
+def selected_source_files(base: Path, selected_paths: list[str]) -> list[tuple[PurePosixPath, Path]]:
+    files: list[tuple[PurePosixPath, Path]] = []
+    for rel in compress_selected_paths(selected_paths):
+        source = ensure_inside(base.joinpath(*rel.parts), base)
+        if not source.exists():
+            raise FileNotFoundError(f"Selected path does not exist: {rel}")
+        if source.is_dir():
+            for child in sorted(source.rglob("*")):
+                if child.is_file():
+                    child_rel = PurePosixPath(child.relative_to(base).as_posix())
+                    files.append((child_rel, child))
+        else:
+            files.append((rel, source))
+    return files
+
+
+def is_video(path: Path) -> bool:
+    return path.suffix.casefold() in VIDEO_EXTENSIONS
+
+
+def is_subtitle(path: Path) -> bool:
+    return path.suffix.casefold() in SUBTITLE_EXTENSIONS
+
+
+def is_media_rel(rel: PurePosixPath) -> bool:
+    return rel.suffix.casefold() in VIDEO_EXTENSIONS | SUBTITLE_EXTENSIONS
+
+
+def season_from_target_folder(folder: str) -> tuple[str, int]:
+    rel = safe_target_folder(folder)
+    if len(rel.parts) < 2:
+        raise ValueError("Series target must include series folder and Season NN")
+    match = re.fullmatch(r"Season\s+(\d{1,2})", rel.parts[-1], flags=re.I)
+    if not match:
+        raise ValueError("Series target must end with Season NN")
+    return "/".join(rel.parts[:-1]), int(match.group(1))
+
+
+def series_destination_name(source_rel: PurePosixPath, source: Path, torrent: QbitTorrent, series_folder: str, target_season: int) -> str | None:
+    if not (is_video(source) or is_subtitle(source)):
+        return None
+    info = parse_episode_info(" ".join([str(source_rel), source.name, torrent.name]))
+    if not info:
+        raise ValueError(f"无法识别季集号：{source_rel}")
+    if info["season_number"] != target_season:
+        raise ValueError(f"文件季号 S{info['season_number']:02d} 与目标 Season {target_season:02d} 不一致：{source_rel}")
+    return f"{series_rename_base(Path(series_folder).name, target_season, info['episode_numbers'])}{source.suffix}"
+
+
+def series_destination_name_from_rel(source_rel: PurePosixPath, torrent: QbitTorrent, series_folder: str, target_season: int) -> str | None:
+    if not is_media_rel(source_rel):
+        return None
+    info = parse_episode_info(" ".join([str(source_rel), source_rel.name, torrent.name]))
+    if not info:
+        raise ValueError(f"无法识别季集号：{source_rel}")
+    if info["season_number"] != target_season:
+        raise ValueError(f"文件季号 S{info['season_number']:02d} 与目标 Season {target_season:02d} 不一致：{source_rel}")
+    return f"{series_rename_base(Path(series_folder).name, target_season, info['episode_numbers'])}{source_rel.suffix}"
+
+
+def skipped_existing_missing_source(source: Path, destination: Path) -> dict[str, str]:
+    return {
+        "source": str(source),
+        "destination": str(destination),
+        "skipped": "true",
+        "missing_source": "true",
+    }
+
+
 def move_selected_files(selected_paths: list[str], torrent: QbitTorrent, target_category: str, target_folder: str, settings: Settings) -> list[dict[str, str]]:
     base = qbit_path_to_local(torrent.save_path or settings.qbit_downloads_path, settings)
     target_root = jellyfin_target_path(target_category, target_folder, settings)
     target_root.mkdir(parents=True, exist_ok=True)
     moved: list[dict[str, str]] = []
+    if target_category == "series":
+        series_folder, target_season = season_from_target_folder(target_folder)
+        for selected_rel in compress_selected_paths(selected_paths):
+            selected_source = ensure_inside(base.joinpath(*selected_rel.parts), base)
+            if not selected_source.exists():
+                if selected_rel.suffix:
+                    destination_name = series_destination_name_from_rel(selected_rel, torrent, series_folder, target_season)
+                    if destination_name and (target_root / destination_name).exists():
+                        moved.append(skipped_existing_missing_source(selected_source, target_root / destination_name))
+                        continue
+                if target_root.exists() and any(child.is_file() for child in target_root.iterdir()):
+                    moved.append(skipped_existing_missing_source(selected_source, target_root))
+                    continue
+                raise FileNotFoundError(f"Selected path does not exist: {selected_rel}")
+            source_files = selected_source_files(base, [selected_rel.as_posix()])
+            for rel, source in source_files:
+                destination_name = series_destination_name(rel, source, torrent, series_folder, target_season)
+                if not destination_name:
+                    continue
+                moved.append(move_or_skip_existing(source, target_root / destination_name))
+        if not moved:
+            raise ValueError("没有可移动的电视剧视频或字幕文件")
+        return moved
     for rel in compress_selected_paths(selected_paths):
         source = ensure_inside(base.joinpath(*rel.parts), base)
         if not source.exists():
+            destination = target_root / rel.name
+            if destination.exists():
+                moved.append(skipped_existing_missing_source(source, destination))
+                continue
             raise FileNotFoundError(f"Selected path does not exist: {rel}")
-        destination = unique_destination(target_root / rel.name)
-        shutil.move(str(source), str(destination))
-        moved.append({"source": str(source), "destination": str(destination)})
+        moved.append(move_or_skip_existing(source, target_root / rel.name))
     return moved
 
 
@@ -583,7 +881,14 @@ class QbitClient:
         )
         r.raise_for_status()
 
-    async def move_selected(self, torrent_hash: str, selected_paths: list[str], target_category: str, target_folder: str) -> list[dict[str, str]]:
+    async def move_selected(
+        self,
+        torrent_hash: str,
+        selected_paths: list[str],
+        target_category: str,
+        target_folder: str,
+        rename_plan: dict[str, Any] | None = None,
+    ) -> list[dict[str, str]]:
         torrent = await self.torrent(torrent_hash)
         if not torrent.is_complete:
             raise ValueError("Torrent is not complete")

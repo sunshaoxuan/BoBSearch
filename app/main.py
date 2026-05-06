@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from .config import Settings, get_settings
+from .history import SearchHistoryStore
 from .models import MoveSelectedRequest, SearchResponse
 from .qbit import QbitClient, jellyfin_target_suggestions_with_llm, qbit_health
 from .search import load_indexers, search_and_enrich
@@ -22,6 +23,10 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
 SEARCH_CACHE: dict[str, SearchResponse] = {}
+
+
+def history_store() -> SearchHistoryStore:
+    return SearchHistoryStore(get_settings())
 
 
 def require_login(request: Request) -> None:
@@ -101,15 +106,48 @@ async def api_search(payload: dict, _: None = Depends(require_login)):
         response.results.sort(key=lambda r: len(r.sources), reverse=True)
     else:
         response.results.sort(key=lambda r: r.seeders or -1, reverse=True)
+    item = history_store().save(response, category, sort)
+    response.history_id = item["id"]
     SEARCH_CACHE[query] = response
+    SEARCH_CACHE[item["id"]] = response
     return response
+
+
+@app.get("/api/search/history")
+async def api_search_history(_: None = Depends(require_login)):
+    return {"items": history_store().list_items()}
+
+
+@app.get("/api/search/history/latest")
+async def api_search_history_latest(_: None = Depends(require_login)):
+    store = history_store()
+    item = store.latest()
+    if not item:
+        return {"item": None, "response": None}
+    response = SearchResponse.model_validate(item["response"])
+    response.history_id = item["id"]
+    return {"item": store._metadata(item), "response": response}
+
+
+@app.get("/api/search/history/{history_id}")
+async def api_search_history_item(history_id: str, _: None = Depends(require_login)):
+    store = history_store()
+    item = store.get(history_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="找不到该历史搜索")
+    response = SearchResponse.model_validate(item["response"])
+    response.history_id = item["id"]
+    return {"item": store._metadata(item), "response": response}
 
 
 @app.post("/api/qbit/add")
 async def api_add(payload: dict, _: None = Depends(require_login)):
     query = str(payload.get("query") or "")
     token = str(payload.get("token") or "")
-    cached = SEARCH_CACHE.get(query)
+    history_id = str(payload.get("history_id") or "")
+    cached = SEARCH_CACHE.get(history_id) or SEARCH_CACHE.get(query)
+    if not cached:
+        cached = history_store().get_response(history_id) if history_id else None
     if not cached:
         raise HTTPException(status_code=404, detail="搜索结果已过期，请重新搜索")
     result = next((r for r in cached.results if r.token == token), None)
@@ -191,6 +229,7 @@ async def api_qbit_move_selected(torrent_hash: str, payload: MoveSelectedRequest
             payload.selected_paths,
             payload.target_category,
             payload.target_folder,
+            payload.rename_plan,
         )
         return {"ok": True, "moved": moved, "message": f"已移动 {len(moved)} 项，并删除 qB 任务及剩余文件"}
     except Exception as exc:

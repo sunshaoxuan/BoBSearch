@@ -170,6 +170,16 @@ button, input, select {
   gap: 10px;
 }
 
+.history-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#historySelect {
+  width: 100%;
+  color: #344054;
+}
+
 input, select, button {
   height: 42px;
   border: 1px solid var(--line);
@@ -1156,7 +1166,7 @@ button.ghost {
     border-radius: 14px;
   }
 
-  .search-grid, .filter-grid {
+  .search-grid, .filter-grid, .history-grid {
     grid-template-columns: 1fr;
     gap: 8px;
   }

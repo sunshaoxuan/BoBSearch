@@ -1,9 +1,15 @@
 const PAGE_SIZE = 50;
 const DOWNLOAD_REFRESH_MS = 15000;
+const ACTIVE_TAB_STORAGE_KEY = "bobsearch:activeTab:v1";
 const state = {
   query: "",
   response: null,
   results: [],
+  currentHistoryId: null,
+  currentHistoryItem: null,
+  searchHistory: [],
+  historyLoaded: false,
+  latestRestoreAttempted: false,
   page: 1,
   relevanceMode: "smart",
   inResultsQuery: "",
@@ -18,6 +24,7 @@ const state = {
   targetSuggestions: {},
   selectedFiles: {},
   torrentActions: new Set(),
+  openTorrentFiles: new Set(),
   movingHash: null,
   torrentsRefreshing: false,
   torrentRefreshTimer: null,
@@ -93,7 +100,7 @@ async function search() {
   state.page = 1;
   state.inResultsQuery = "";
   $("inResultsQuery").value = "";
-  setTab("search");
+  setTab("search", { restoreHistory: false });
   $("lowResults").innerHTML = "";
   $("errors").innerHTML = "";
   $("pagination").innerHTML = "";
@@ -107,7 +114,17 @@ async function search() {
     if (requestId !== state.searchRequestId) return;
     state.response = data;
     state.results = data.results || [];
+    state.currentHistoryId = data.history_id || null;
+    state.currentHistoryItem = {
+      id: data.history_id || "",
+      query,
+      category: $("category").value,
+      sort: $("sort").value,
+      total_deduped: data.total_deduped || 0,
+      result_count: (data.results || []).length,
+    };
     render();
+    await loadSearchHistory();
     $("status").textContent = "完成。";
     setSearching(false);
   } catch (err) {
@@ -372,7 +389,7 @@ async function addToQbit(token, button) {
   setQbitAdding(button, true);
   setStatusBusy("正在添加到下载，创建下载任务...");
   try {
-    const data = await postJson("/api/qbit/add", { query: state.query, token });
+    const data = await postJson("/api/qbit/add", { query: state.query, token, history_id: state.currentHistoryId });
     setStatusDone(data.message);
     $("status").textContent = data.message;
   } catch (err) {
@@ -439,8 +456,9 @@ function renderDownloadSummary() {
   $("downloadMeta").textContent = state.torrentsLoaded ? "显示 qB 全部任务，已完成任务可移动入库。" : "进入下载管理后读取 qB 清单。";
 }
 
-function setTab(tab) {
+function setTab(tab, options = {}) {
   state.activeTab = tab;
+  writeActiveTab(tab);
   document.querySelectorAll(".tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.tab === tab);
   });
@@ -453,7 +471,126 @@ function setTab(tab) {
     startTorrentAutoRefresh();
   } else {
     stopTorrentAutoRefresh();
+    if (options.restoreHistory !== false) {
+      restoreLatestSearchIfNeeded();
+    }
   }
+}
+
+function writeActiveTab(tab) {
+  try {
+    window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, tab);
+  } catch {
+    // UI preference persistence is best effort.
+  }
+}
+
+function readActiveTab() {
+  try {
+    return window.localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) === "downloads" ? "downloads" : "search";
+  } catch {
+    return "search";
+  }
+}
+
+async function loadSearchHistory() {
+  try {
+    const data = await getJson("/api/search/history");
+    state.searchHistory = data.items || [];
+    state.historyLoaded = true;
+    renderSearchHistorySelect();
+  } catch (err) {
+    state.historyLoaded = false;
+    renderSearchHistorySelect(`历史读取失败：${err.message}`);
+  }
+}
+
+function renderSearchHistorySelect(errorText = "") {
+  const select = $("historySelect");
+  if (!select) return;
+  if (errorText) {
+    select.innerHTML = `<option value="">${escapeHtml(errorText)}</option>`;
+    return;
+  }
+  if (!state.searchHistory.length) {
+    select.innerHTML = `<option value="">历史搜索：暂无记录</option>`;
+    return;
+  }
+  select.innerHTML = [
+    `<option value="">历史搜索：选择一条已保存结果</option>`,
+    ...state.searchHistory.map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === state.currentHistoryId ? "selected" : ""}>${escapeHtml(historyLabel(item))}</option>`),
+  ].join("");
+}
+
+function historyLabel(item) {
+  const count = item.result_count ?? item.total_deduped ?? 0;
+  const time = item.updated_at ? formatHistoryTime(item.updated_at) : "";
+  return `${item.query} · ${categoryLabel(item.category)} · ${sortLabel(item.sort)} · ${count} 条${time ? ` · ${time}` : ""}`;
+}
+
+function categoryLabel(category) {
+  return { all: "全部", movies: "电影", tv: "剧集", anime: "动画" }[category] || category || "全部";
+}
+
+function sortLabel(sort) {
+  return { seeders: "种子数", sources: "来源数", date: "发布时间", size: "大小" }[sort] || sort || "种子数";
+}
+
+function formatHistoryTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+async function restoreLatestSearchIfNeeded() {
+  if (state.response || state.latestRestoreAttempted || state.isSearching || state.activeTab !== "search") return;
+  state.latestRestoreAttempted = true;
+  await loadLatestSearchHistory();
+}
+
+async function loadLatestSearchHistory() {
+  try {
+    const data = await getJson("/api/search/history/latest");
+    if (data.response) {
+      applyHistoryResponse(data.item, data.response);
+      $("status").textContent = "已恢复上一次搜索结果。";
+    }
+  } catch (err) {
+    $("status").textContent = `恢复历史搜索失败：${err.message}`;
+  }
+}
+
+async function loadHistoryItem(historyId) {
+  if (!historyId || state.movingHash || state.isSearching) return;
+  try {
+    $("status").textContent = "正在载入历史搜索结果...";
+    const data = await getJson(`/api/search/history/${encodeURIComponent(historyId)}`);
+    applyHistoryResponse(data.item, data.response);
+    $("status").textContent = "已载入历史搜索结果。";
+  } catch (err) {
+    $("status").textContent = `载入历史搜索失败：${err.message}`;
+  }
+}
+
+function applyHistoryResponse(item, response) {
+  if (!response) return;
+  state.response = response;
+  state.results = response.results || [];
+  state.query = response.query || "";
+  state.currentHistoryId = response.history_id || item?.id || null;
+  state.currentHistoryItem = item || null;
+  state.page = 1;
+  state.inResultsQuery = "";
+  $("query").value = state.query;
+  $("inResultsQuery").value = "";
+  if (item?.category && $("category").querySelector(`option[value="${CSS.escape(item.category)}"]`)) {
+    $("category").value = item.category;
+  }
+  if (item?.sort && $("sort").querySelector(`option[value="${CSS.escape(item.sort)}"]`)) {
+    $("sort").value = item.sort;
+  }
+  renderSearchHistorySelect();
+  render();
 }
 
 function startTorrentAutoRefresh() {
@@ -473,6 +610,35 @@ function stopTorrentAutoRefresh() {
 
 function renderTorrents() {
   $("torrentList").innerHTML = state.torrents.map(torrentCard).join("") || emptyState("qB 暂无下载任务。");
+  restoreOpenTorrentFiles();
+}
+
+function restoreOpenTorrentFiles() {
+  const activeHashes = new Set(state.torrents.map((torrent) => torrent.hash));
+  for (const hash of Array.from(state.openTorrentFiles)) {
+    if (!activeHashes.has(hash)) {
+      state.openTorrentFiles.delete(hash);
+      delete state.torrentFiles[hash];
+      delete state.targetSuggestions[hash];
+      delete state.selectedFiles[hash];
+      continue;
+    }
+    const holder = $(`files-${hash}`);
+    const toggle = $(`toggle-files-${hash}`);
+    if (!holder) continue;
+    holder.dataset.open = "1";
+    if (toggle) {
+      toggle.innerHTML = icon("chevronUp");
+      toggle.title = "收起文件";
+      toggle.setAttribute("aria-label", "收起文件");
+      toggle.setAttribute("aria-expanded", "true");
+    }
+    if (state.torrentFiles[hash] && state.targetSuggestions[hash]) {
+      renderTorrentFiles(hash);
+    } else {
+      holder.innerHTML = `<div class="mini-status">文件面板已展开，正在等待下次读取。</div>`;
+    }
+  }
 }
 
 function icon(name) {
@@ -555,6 +721,7 @@ async function controlTorrent(hash, action, button) {
     delete state.torrentFiles[hash];
     delete state.targetSuggestions[hash];
     delete state.selectedFiles[hash];
+    state.openTorrentFiles.delete(hash);
     await loadTorrents();
   } catch (err) {
     $("torrentStatus").textContent = `${actionText}失败：${err.message}`;
@@ -580,6 +747,7 @@ async function toggleTorrentFiles(hash) {
   if (holder.dataset.open === "1") {
     holder.innerHTML = "";
     holder.dataset.open = "0";
+    state.openTorrentFiles.delete(hash);
     if (toggle) {
       toggle.innerHTML = icon("chevronDown");
       toggle.title = "展开文件";
@@ -589,6 +757,7 @@ async function toggleTorrentFiles(hash) {
     return;
   }
   holder.dataset.open = "1";
+  state.openTorrentFiles.add(hash);
   if (toggle) {
     toggle.innerHTML = icon("chevronUp");
     toggle.title = "收起文件";
@@ -601,7 +770,8 @@ async function toggleTorrentFiles(hash) {
       const data = await getJson(`/api/qbit/torrents/${encodeURIComponent(hash)}/files`);
       state.torrentFiles[hash] = data.files || [];
     }
-    await ensureTargetSuggestions(hash, holder);
+    delete state.targetSuggestions[hash];
+    await ensureTargetSuggestions(hash, holder, true);
     state.selectedFiles[hash] = state.selectedFiles[hash] || new Set();
     renderTorrentFiles(hash);
   } catch (err) {
@@ -610,7 +780,7 @@ async function toggleTorrentFiles(hash) {
 }
 
 function targetCacheKey(hash) {
-  return `bobsearch:targetSuggestions:v2:${hash}`;
+  return `bobsearch:targetSuggestions:v3:${hash}`;
 }
 
 function readTargetSuggestionsCache(hash) {
@@ -633,13 +803,6 @@ function writeTargetSuggestionsCache(hash, targets) {
 
 async function ensureTargetSuggestions(hash, holder, force = false) {
   if (!force && state.targetSuggestions[hash]) return;
-  if (!force) {
-    const cached = readTargetSuggestionsCache(hash);
-    if (cached) {
-      state.targetSuggestions[hash] = cached;
-      return;
-    }
-  }
   holder.innerHTML = fileLoadingPanel("正在计算 Jellyfin 目标目录", "匹配已有目录，并查询 TMDb/LLM 生成符合规则的文件夹名。", ["匹配已有目录", "查询 TMDb", "LLM 命名"]);
   const torrent = state.torrents.find((item) => item.hash === hash);
   const data = await getJson(`/api/jellyfin/targets?query=${encodeURIComponent(torrent?.name || "")}`);
@@ -669,6 +832,8 @@ function renderTorrentFiles(hash) {
   const files = state.torrentFiles[hash] || [];
   const targets = state.targetSuggestions[hash] || [];
   const complete = Boolean(torrent && torrent.is_complete);
+  const firstTarget = targets[0];
+  const canMove = complete && Boolean(firstTarget) && !firstTarget.disabled;
   holder.innerHTML = `
     <div class="file-tools">
       <select id="targetChoice-${escapeAttr(hash)}" class="target-choice" onchange="updateTargetReason('${escapeAttr(hash)}')">
@@ -677,7 +842,7 @@ function renderTorrentFiles(hash) {
       <button class="ghost" onclick="selectAllFiles('${escapeAttr(hash)}')">全选</button>
       <button class="ghost" onclick="clearSelectedFiles('${escapeAttr(hash)}')">清空</button>
       <button class="ghost" onclick="clearTargetSuggestions('${escapeAttr(hash)}')">清除目录名</button>
-      <button ${complete ? "" : "disabled"} onclick="moveSelected('${escapeAttr(hash)}')">移动勾选并清理</button>
+      <button id="moveBtn-${escapeAttr(hash)}" ${canMove ? "" : "disabled"} onclick="moveSelected('${escapeAttr(hash)}')">移动勾选并清理</button>
     </div>
     <p id="targetReason-${escapeAttr(hash)}" class="target-reason">${targetReasonText(targets[0])}</p>
     <p class="section-note">${targets.length ? "目标目录已按 Jellyfin 现有目录和命名规则自动生成，优先选择最高匹配项。" : "没有可用目标目录候选。"}</p>
@@ -687,15 +852,28 @@ function renderTorrentFiles(hash) {
 }
 
 function targetOption(target) {
-  const label = `${target.category}/${target.folder}${target.existing ? "" : "（新建）"} · ${Math.round((target.score || 0) * 100)}%`;
+  const episode = target.media_type === "series" && target.season_number && (target.episode_numbers || []).length
+    ? ` · ${episodeLabel(target.season_number, target.episode_numbers)}`
+    : "";
+  const disabled = target.disabled ? " · 不可移动" : "";
+  const stateLabel = target.existing ? "现存" : "新建";
+  const label = `${target.category}/${target.target_folder || target.folder}${episode} · ${stateLabel} · ${Math.round((target.score || 0) * 100)}%${disabled}`;
   const value = `${target.category}\t${target.folder}`;
   return `<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`;
+}
+
+function episodeLabel(season, episodes) {
+  if (!episodes || !episodes.length) return "";
+  if (episodes.length > 1) return `S${String(season).padStart(2, "0")}E${String(episodes[0]).padStart(2, "0")}-E${String(episodes[episodes.length - 1]).padStart(2, "0")}`;
+  return `S${String(season).padStart(2, "0")}E${String(episodes[0]).padStart(2, "0")}`;
 }
 
 function targetReasonText(target) {
   if (!target) return "";
   const reason = target.reason ? `：${target.reason}` : "";
-  return `匹配说明${reason}`;
+  const rename = target.rename_plan?.preview ? `；重命名预览：${target.rename_plan.preview}` : "";
+  const disabled = target.disabled ? "；无法识别季集号，不能自动移动" : "";
+  return `匹配说明${reason}${rename}${disabled}`;
 }
 
 function updateTargetReason(hash) {
@@ -704,6 +882,11 @@ function updateTargetReason(hash) {
   if (!choice || !reason) return;
   const target = (state.targetSuggestions[hash] || [])[choice.selectedIndex];
   reason.textContent = targetReasonText(target);
+  const torrent = state.torrents.find((item) => item.hash === hash);
+  const moveBtn = $(`moveBtn-${hash}`);
+  if (moveBtn) {
+    moveBtn.disabled = !torrent?.is_complete || !target || Boolean(target.disabled);
+  }
 }
 
 function fileNode(hash, node, depth) {
@@ -766,6 +949,7 @@ async function moveSelected(hash) {
   if (state.movingHash) return;
   const selected = Array.from(state.selectedFiles[hash] || []);
   const targetChoice = $(`targetChoice-${hash}`).value;
+  const target = selectedTarget(hash);
   const [targetCategory, targetFolder] = targetChoice.split("\t");
   if (!selected.length) {
     $("torrentStatus").textContent = "请先勾选要移动的文件或文件夹。";
@@ -773,6 +957,10 @@ async function moveSelected(hash) {
   }
   if (!targetCategory || !targetFolder) {
     $("torrentStatus").textContent = "没有可用的 Jellyfin 目标目录候选。";
+    return;
+  }
+  if (target?.disabled) {
+    $("torrentStatus").textContent = "当前电视剧目标无法识别季集号，不能自动移动。";
     return;
   }
   const ok = confirm(`将移动 ${selected.length} 个勾选项到 Jellyfin/${targetCategory}/${targetFolder}。全部成功后会删除 qB 任务，并删除未勾选的剩余文件。继续吗？`);
@@ -783,16 +971,25 @@ async function moveSelected(hash) {
       selected_paths: selected,
       target_category: targetCategory,
       target_folder: targetFolder,
+      rename_plan: target?.rename_plan || null,
     });
     $("torrentStatus").textContent = data.message;
     delete state.torrentFiles[hash];
     delete state.selectedFiles[hash];
+    delete state.targetSuggestions[hash];
+    state.openTorrentFiles.delete(hash);
     await loadTorrents(true);
   } catch (err) {
     $("torrentStatus").textContent = `移动失败，qB 任务和剩余文件已保留：${err.message}`;
   } finally {
     setMoveBusy(hash, false);
   }
+}
+
+function selectedTarget(hash) {
+  const choice = $(`targetChoice-${hash}`);
+  if (!choice) return null;
+  return (state.targetSuggestions[hash] || [])[choice.selectedIndex] || null;
 }
 
 function setMoveBusy(hash, isBusy) {
@@ -890,6 +1087,9 @@ $("sort").addEventListener("change", () => {
   state.page = 1;
   render();
 });
+$("historySelect").addEventListener("change", (event) => {
+  loadHistoryItem(event.target.value);
+});
 document.addEventListener("click", (event) => {
   const trigger = event.target.closest(".collapsible-text");
   if (!trigger) return;
@@ -900,5 +1100,16 @@ document.addEventListener("click", (event) => {
   const hint = trigger.querySelector(".collapse-hint");
   if (hint) hint.textContent = expanded ? "收起" : "查看更多";
 });
-health();
-renderDownloadSummary();
+
+async function init() {
+  health();
+  renderDownloadSummary();
+  await loadSearchHistory();
+  const initialTab = readActiveTab();
+  setTab(initialTab);
+  if (initialTab === "search") {
+    restoreLatestSearchIfNeeded();
+  }
+}
+
+init();

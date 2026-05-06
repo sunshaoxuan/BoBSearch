@@ -9,6 +9,7 @@ services:
     ports:
       - "${APP_PUBLIC_PORT:-7788}:${APP_PORT:-8000}"
     volumes:
+      - ${APP_DATA_HOST_PATH:-./data/bobsearch}:${APP_DATA_DIR:-/app/data}
       - ${JACKETT_INDEXERS_HOST_PATH:-./data/jackett/Jackett/Indexers}:${JACKETT_INDEXERS_DIR:-/jackett-indexers}:ro
       - ${QBIT_DOWNLOADS_HOST_PATH:-./downloads}:${QBIT_LOCAL_DOWNLOADS_PATH:-/downloads}
       - ${QBIT_EXTRA_DOWNLOADS_HOST_PATH:-./downloads-extra}:${QBIT_EXTRA_LOCAL_DOWNLOADS_PATH:-/downloads-extra}

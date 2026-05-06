@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BoBSearch</title>
   <link rel="icon" href="/static/brand/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/app.css?v=20260505-bobsearch-release">
+  <link rel="stylesheet" href="/static/app.css?v=20260506-history">
 </head>
 <body>
   <div class="app-shell">
@@ -55,6 +55,11 @@
               </select>
               <button id="healthBtn" class="ghost">健康检查</button>
             </div>
+            <div class="history-grid">
+              <select id="historySelect" aria-label="历史搜索">
+                <option value="">历史搜索：暂无记录</option>
+              </select>
+            </div>
           </section>
 
           <section id="status" class="status glass"></section>
@@ -99,6 +104,6 @@
     </main>
   </div>
 
-  <script src="/static/app.js?v=20260505-bobsearch-release"></script>
+  <script src="/static/app.js?v=20260506-history"></script>
 </body>
 </html>

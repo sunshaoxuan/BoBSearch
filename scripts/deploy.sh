@@ -110,6 +110,7 @@ tmp_archive="$(mktemp -t bobsearch.XXXXXX.tar.gz)"
 tar -C "$ROOT" \
   --exclude '.env' \
   --exclude '.env.*' \
+  --exclude 'data' \
   --exclude '.pytest_cache' \
   --exclude '__pycache__' \
   --exclude '.venv' \
@@ -120,7 +121,7 @@ tar -C "$ROOT" \
 expect_scp 300 "$tmp_archive" /tmp/bobsearch.tar.gz
 rm -f "$tmp_archive"
 
-expect_ssh 300 "find '$DEPLOY_TARGET_DIR' -mindepth 1 ! -name '.env' -exec rm -rf {} + && tar -C '$DEPLOY_TARGET_DIR' -xzf /tmp/bobsearch.tar.gz && rm -f /tmp/bobsearch.tar.gz"
+expect_ssh 300 "find '$DEPLOY_TARGET_DIR' -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} + && tar -C '$DEPLOY_TARGET_DIR' -xzf /tmp/bobsearch.tar.gz && rm -f /tmp/bobsearch.tar.gz"
 expect_scp 120 "$ENV_FILE" "$DEPLOY_TARGET_DIR/.env"
 expect_ssh 120 "chmod 600 '$DEPLOY_TARGET_DIR/.env'"
 

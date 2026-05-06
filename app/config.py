@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "BoBSearch"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
+    app_data_dir: str = "/app/data"
 
     web_username: str = "admin"
     web_password: str
@@ -36,6 +37,8 @@ class Settings(BaseSettings):
     search_concurrency: int = 8
     indexer_timeout_seconds: float = 12
     total_timeout_seconds: float = 45
+    search_history_path: str = "/app/data/search-history.json"
+    search_history_limit: int = 30
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

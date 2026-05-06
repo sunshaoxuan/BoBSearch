@@ -62,6 +62,7 @@ class SearchResponse(BaseModel):
     indexers: list[IndexerStatus]
     relevance_summary: RelevanceSummary = Field(default_factory=RelevanceSummary)
     llm_error: str | None = None
+    history_id: str | None = None
 
 
 class QbitTorrent(BaseModel):
@@ -97,6 +98,7 @@ class MoveSelectedRequest(BaseModel):
     selected_paths: list[str]
     target_category: str
     target_folder: str
+    rename_plan: dict | None = None
 
 
 class MoveSelectedResponse(BaseModel):
