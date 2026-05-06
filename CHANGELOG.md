@@ -10,6 +10,7 @@ All notable changes to BoBSearch will be documented in this file.
 - Icon-only torrent controls with a separate expand/collapse file row.
 - Cached Jellyfin target-folder suggestions with a manual clear/regenerate action.
 - Safer Jellyfin target matching for sequels and release-year mismatches.
+- Modal progress overlay while moving selected downloads into Jellyfin and cleaning qB tasks.
 
 ## [1.0.0] - 2026-05-05
 

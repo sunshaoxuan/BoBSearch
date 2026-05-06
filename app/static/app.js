@@ -17,6 +17,7 @@ const state = {
   targetSuggestions: {},
   selectedFiles: {},
   torrentActions: new Set(),
+  movingHash: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -73,6 +74,7 @@ function healthItem(label, ok, text) {
 }
 
 async function search() {
+  if (state.movingHash) return;
   const query = $("query").value.trim();
   if (query.length < 2) {
     $("status").textContent = "请输入至少两个字符。";
@@ -360,6 +362,7 @@ function searchableText(result) {
 }
 
 async function addToQbit(token, button) {
+  if (state.movingHash) return;
   if (!confirm("请确认你有权下载该资源。是否添加到下载？")) return;
   if (state.addingTokens.has(token)) return;
   state.addingTokens.add(token);
@@ -401,7 +404,8 @@ function setStatusDone(text, isError = false) {
   }
 }
 
-async function loadTorrents() {
+async function loadTorrents(force = false) {
+  if (state.movingHash && !force) return;
   $("torrentStatus").textContent = "正在读取 qB 下载清单...";
   try {
     const data = await getJson("/api/qbit/torrents");
@@ -460,8 +464,9 @@ function icon(name) {
 function torrentCard(torrent) {
   const complete = Boolean(torrent.is_complete);
   const progress = Math.round((torrent.progress || 0) * 1000) / 10;
+  const moving = state.movingHash === torrent.hash;
   return `
-    <article class="torrent-card" data-hash="${escapeAttr(torrent.hash)}">
+    <article class="torrent-card ${moving ? "moving" : ""}" data-hash="${escapeAttr(torrent.hash)}">
       <div class="torrent-head">
         <div class="torrent-main">
           <h3>${collapsibleText(torrent.name, "torrent-title")}</h3>
@@ -485,11 +490,25 @@ function torrentCard(torrent) {
       </div>
       <div class="progress"><span style="width:${Math.min(100, Math.max(0, progress))}%"></span></div>
       <div id="files-${escapeAttr(torrent.hash)}" class="torrent-files"></div>
+      ${moving ? torrentMoveOverlay() : ""}
     </article>
   `;
 }
 
+function torrentMoveOverlay() {
+  return `
+    <div class="torrent-move-overlay" aria-live="polite">
+      <div class="file-loading-orbit" aria-hidden="true"><span></span></div>
+      <div>
+        <strong>正在移动并清理</strong>
+        <p>正在停止任务、移动勾选内容，并在成功后清理下载任务和剩余文件。</p>
+      </div>
+    </div>
+  `;
+}
+
 async function controlTorrent(hash, action, button) {
+  if (state.movingHash) return;
   const actionText = {
     start: "开始",
     stop: "停止",
@@ -529,6 +548,7 @@ function setTorrentActionBusy(button, isBusy, actionText) {
 }
 
 async function toggleTorrentFiles(hash) {
+  if (state.movingHash) return;
   const holder = $(`files-${hash}`);
   const toggle = $(`toggle-files-${hash}`);
   if (!holder) return;
@@ -703,6 +723,7 @@ function clearSelectedFiles(hash) {
 }
 
 async function clearTargetSuggestions(hash) {
+  if (state.movingHash) return;
   const holder = $(`files-${hash}`);
   if (!holder) return;
   window.localStorage.removeItem(targetCacheKey(hash));
@@ -717,6 +738,7 @@ async function clearTargetSuggestions(hash) {
 }
 
 async function moveSelected(hash) {
+  if (state.movingHash) return;
   const selected = Array.from(state.selectedFiles[hash] || []);
   const targetChoice = $(`targetChoice-${hash}`).value;
   const [targetCategory, targetFolder] = targetChoice.split("\t");
@@ -730,7 +752,7 @@ async function moveSelected(hash) {
   }
   const ok = confirm(`将移动 ${selected.length} 个勾选项到 Jellyfin/${targetCategory}/${targetFolder}。全部成功后会删除 qB 任务，并删除未勾选的剩余文件。继续吗？`);
   if (!ok) return;
-  $("torrentStatus").textContent = "正在暂停任务、移动文件并清理 qB...";
+  setMoveBusy(hash, true);
   try {
     const data = await postJson(`/api/qbit/torrents/${encodeURIComponent(hash)}/move-selected`, {
       selected_paths: selected,
@@ -740,10 +762,60 @@ async function moveSelected(hash) {
     $("torrentStatus").textContent = data.message;
     delete state.torrentFiles[hash];
     delete state.selectedFiles[hash];
-    await loadTorrents();
+    await loadTorrents(true);
   } catch (err) {
     $("torrentStatus").textContent = `移动失败，qB 任务和剩余文件已保留：${err.message}`;
+  } finally {
+    setMoveBusy(hash, false);
   }
+}
+
+function setMoveBusy(hash, isBusy) {
+  state.movingHash = isBusy ? hash : null;
+  document.body.classList.toggle("modal-busy", isBusy);
+  const card = document.querySelector(`.torrent-card[data-hash="${CSS.escape(hash)}"]`);
+  if (isBusy) {
+    $("torrentStatus").textContent = "正在暂停任务、移动文件并清理下载任务...";
+    if (card) {
+      card.classList.add("moving");
+      if (!card.querySelector(".torrent-move-overlay")) {
+        card.insertAdjacentHTML("beforeend", torrentMoveOverlay());
+      }
+    }
+    showMoveModal();
+  } else {
+    if (card) {
+      card.classList.remove("moving");
+      card.querySelector(".torrent-move-overlay")?.remove();
+    }
+    hideMoveModal();
+  }
+}
+
+function showMoveModal() {
+  if ($("moveModal")) return;
+  document.body.insertAdjacentHTML("beforeend", `
+    <div id="moveModal" class="move-modal" role="alertdialog" aria-modal="true" aria-labelledby="moveModalTitle">
+      <div class="move-modal-panel glass">
+        <div class="loading-orbit" aria-hidden="true"><span></span></div>
+        <div class="move-modal-copy">
+          <h2 id="moveModalTitle">正在移动并清理</h2>
+          <p>请保持页面打开。完成前会锁定操作，避免重复移动、删除或刷新任务。</p>
+          <div class="loading-steps compact">
+            <span style="--step:0">停止下载任务</span>
+            <span style="--step:1">移动文件</span>
+            <span style="--step:2">清理剩余文件</span>
+          </div>
+          <div class="loading-bar"><span></span></div>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+function hideMoveModal() {
+  $("moveModal")?.remove();
+  document.body.classList.remove("modal-busy");
 }
 
 function emptyState(text) {
