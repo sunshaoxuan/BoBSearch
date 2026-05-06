@@ -17,7 +17,7 @@ from .qbit import QbitClient, jellyfin_target_suggestions_with_llm, qbit_health
 from .search import load_indexers, search_and_enrich
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name)
+app = FastAPI(title=settings.app_name, version=settings.app_version)
 app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, same_site="strict", https_only=False)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
@@ -40,7 +40,8 @@ def is_logged_in(request: Request) -> bool:
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    settings = get_settings()
+    return templates.TemplateResponse("login.html", {"request": request, "error": None, "app_version": settings.app_version})
 
 
 @app.post("/login")
@@ -49,7 +50,11 @@ async def login(request: Request, username: Annotated[str, Form()], password: An
     if secrets.compare_digest(username, settings.web_username) and secrets.compare_digest(password, settings.web_password):
         request.session["authenticated"] = True
         return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse("login.html", {"request": request, "error": "用户名或密码错误"}, status_code=401)
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": "用户名或密码错误", "app_version": settings.app_version},
+        status_code=401,
+    )
 
 
 @app.post("/logout")
@@ -62,7 +67,8 @@ async def logout(request: Request):
 async def index(request: Request):
     if not is_logged_in(request):
         return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse("index.html", {"request": request})
+    settings = get_settings()
+    return templates.TemplateResponse("index.html", {"request": request, "app_version": settings.app_version})
 
 
 @app.get("/api/health")
@@ -87,7 +93,7 @@ async def health(_: None = Depends(require_login)):
             llm = {"ok": True, "model": settings.llm_model}
     except Exception as exc:
         llm = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
-    return {"jackett": jackett, "qbit": await qbit_health(settings), "llm": llm}
+    return {"app": {"name": settings.app_name, "version": settings.app_version}, "jackett": jackett, "qbit": await qbit_health(settings), "llm": llm}
 
 
 @app.post("/api/search")

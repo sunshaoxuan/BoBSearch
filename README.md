@@ -1,5 +1,7 @@
 # BoBSearch
 
+Current release: **1.0.1**
+
 BoBSearch is a self-hosted media search and download management console. It searches Jackett indexers, deduplicates results, uses an OpenAI-compatible LLM to summarize releases, adds selected resources to qBittorrent, and moves completed downloads into a Jellyfin library.
 
 Only BoBSearch needs to be exposed to users. qBittorrent and Jackett can either be existing external services or bundled internal support containers.
@@ -11,7 +13,12 @@ Only BoBSearch needs to be exposed to users. qBittorrent and Jackett can either 
 - LLM-assisted release naming, quality tags, and recommendation notes.
 - Add selected results to qBittorrent through BoBSearch only.
 - Manage qBittorrent tasks, inspect file trees, and move completed files to Jellyfin.
-- Generate Jellyfin folder names using existing folder rules and TMDb IDs.
+- Start, stop, and delete qBittorrent tasks, including delete-with-files cleanup.
+- Generate Jellyfin movie folder names using existing folder rules and TMDb IDs.
+- Move TV episodes into `series/<show>/Season NN` and rename video files in Jellyfin-compatible `Show - SxxEyy.ext` form.
+- Keep the last 30 successful searches in server-side history so refreshes and repeated review do not rerun Jackett or LLM.
+- Retry-safe Jellyfin moves: already moved files with matching destinations are skipped and qB cleanup still completes.
+- Download Management refreshes every 15 seconds while preserving expanded task panels.
 - Responsive Web UI for desktop and mobile.
 
 ## Deployment Modes
@@ -51,7 +58,7 @@ BoBSearch reads `.env` at runtime. Do not commit `.env`.
 
 Important groups:
 
-- `APP_*`: image, container name, public port, uvicorn host/port.
+- `APP_*`: app name/version, image, container name, public port, uvicorn host/port.
 - `WEB_*`: BoBSearch login credentials.
 - `JACKETT_*`: Jackett API URL, API key, and indexer config mount.
 - `QBIT_*`: qBittorrent API URL, credentials, category, and path mapping.
