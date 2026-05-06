@@ -73,10 +73,18 @@ async function health() {
 
 function renderHealth(data) {
   $("healthPanel").innerHTML = `
-    ${healthItem("Jackett", data.jackett.ok, data.jackett.ok ? `${data.jackett.indexers} 个源` : data.jackett.error)}
-    ${healthItem("qB", data.qbit.ok, data.qbit.ok ? data.qbit.version : data.qbit.error)}
-    ${healthItem("LLM", data.llm.ok, data.llm.ok ? data.llm.model : data.llm.error)}
+    ${healthItem("搜索工具", data.jackett.ok, data.jackett.ok ? `${data.jackett.indexers} 个源` : userFacingServiceText(data.jackett.error))}
+    ${healthItem("下载工具", data.qbit.ok, data.qbit.ok ? data.qbit.version : userFacingServiceText(data.qbit.error))}
+    ${healthItem("大模型", data.llm.ok, data.llm.ok ? data.llm.model : userFacingServiceText(data.llm.error))}
   `;
+}
+
+function userFacingServiceText(value) {
+  return String(value || "")
+    .replaceAll("Jackett", "搜索工具")
+    .replaceAll("qBittorrent", "下载工具")
+    .replaceAll("qB", "下载工具")
+    .replaceAll("LLM", "大模型");
 }
 
 function healthItem(label, ok, text) {
@@ -166,11 +174,11 @@ function loadingPanel() {
       </div>
       <div class="loading-copy">
         <h2>正在搜索资源</h2>
-        <p>正在并发查询 Jackett、去重评分，并调用 LLM 整理版本信息。</p>
+        <p>正在并发查询搜索工具、去重评分，并调用大模型整理版本信息。</p>
         <div class="loading-steps">
-          <span style="--step:0">查询 Jackett</span>
+          <span style="--step:0">查询搜索工具</span>
           <span style="--step:1">去重评分</span>
-          <span style="--step:2">LLM 整理</span>
+          <span style="--step:2">大模型整理</span>
         </div>
         <div class="loading-bar"><span></span></div>
         <small>可以直接输入新关键词并回车，新搜索会接管当前请求。</small>
@@ -242,7 +250,7 @@ function renderSummary(filtered, start, pageCount, totalPages) {
     <div class="metric"><span>低相关</span><strong>${summary.low}</strong></div>
     <div class="metric"><span>失败源</span><strong>${failed}</strong></div>
   `;
-  $("viewMeta").textContent = `${filtered.visible.length ? start + 1 : 0}-${start + pageCount} / ${filtered.visible.length}，第 ${state.page}/${totalPages} 页${data.llm_error ? "；LLM 整理失败，已显示基础结果" : ""}`;
+  $("viewMeta").textContent = `${filtered.visible.length ? start + 1 : 0}-${start + pageCount} / ${filtered.visible.length}，第 ${state.page}/${totalPages} 页${data.llm_error ? "；大模型整理失败，已显示基础结果" : ""}`;
 }
 
 function renderErrors() {
@@ -428,14 +436,14 @@ async function loadTorrents(force = false) {
   if (state.movingHash && !force) return;
   if (state.torrentsRefreshing && !force) return;
   state.torrentsRefreshing = true;
-  $("torrentStatus").textContent = "正在读取 qB 下载清单...";
+  $("torrentStatus").textContent = "正在读取下载工具清单...";
   try {
     const data = await getJson("/api/qbit/torrents");
     state.torrents = data.torrents || [];
     state.torrentsLoaded = true;
     renderTorrents();
     renderDownloadSummary();
-    $("torrentStatus").textContent = state.torrents.length ? `已读取 ${state.torrents.length} 个 qB 任务。` : "qB 暂无任务。";
+    $("torrentStatus").textContent = state.torrents.length ? `已读取 ${state.torrents.length} 个下载任务。` : "下载工具暂无任务。";
   } catch (err) {
     $("torrentStatus").textContent = `读取失败：${err.message}`;
   } finally {
@@ -453,7 +461,7 @@ function renderDownloadSummary() {
     <div class="metric"><span>下载中</span><strong>${active}</strong></div>
     <div class="metric"><span>总大小</span><strong>${fmtSize(totalSize)}</strong></div>
   `;
-  $("downloadMeta").textContent = state.torrentsLoaded ? "显示 qB 全部任务，已完成任务可移动入库。" : "进入下载管理后读取 qB 清单。";
+  $("downloadMeta").textContent = state.torrentsLoaded ? "显示下载工具全部任务，已完成任务可移动入库。" : "进入下载管理后读取下载工具清单。";
 }
 
 function setTab(tab, options = {}) {
@@ -609,7 +617,7 @@ function stopTorrentAutoRefresh() {
 }
 
 function renderTorrents() {
-  $("torrentList").innerHTML = state.torrents.map(torrentCard).join("") || emptyState("qB 暂无下载任务。");
+  $("torrentList").innerHTML = state.torrents.map(torrentCard).join("") || emptyState("下载工具暂无下载任务。");
   restoreOpenTorrentFiles();
 }
 
@@ -709,12 +717,12 @@ async function controlTorrent(hash, action, button) {
   if (state.torrentActions.has(key)) return;
   if (action === "delete-with-files") {
     const torrent = state.torrents.find((item) => item.hash === hash);
-    const ok = confirm(`将从 qB 删除任务，并连同已下载文件一起删除：\n${torrent?.name || hash}\n\n这个操作不能撤销。继续吗？`);
+    const ok = confirm(`将从下载工具删除任务，并连同已下载文件一起删除：\n${torrent?.name || hash}\n\n这个操作不能撤销。继续吗？`);
     if (!ok) return;
   }
   state.torrentActions.add(key);
   setTorrentActionBusy(button, true, actionText);
-  $("torrentStatus").textContent = `正在${actionText} qB 任务...`;
+  $("torrentStatus").textContent = `正在${actionText} 下载任务...`;
   try {
     const data = await postJson(`/api/qbit/torrents/${encodeURIComponent(hash)}/${action}`, {});
     $("torrentStatus").textContent = data.message || `已${actionText}。`;
@@ -764,7 +772,7 @@ async function toggleTorrentFiles(hash) {
     toggle.setAttribute("aria-label", "收起文件");
     toggle.setAttribute("aria-expanded", "true");
   }
-  holder.innerHTML = fileLoadingPanel("正在读取文件列表", "连接 qBittorrent，展开任务内文件和目录结构。", ["读取 qB", "生成文件树", "准备勾选"]);
+  holder.innerHTML = fileLoadingPanel("正在读取文件列表", "连接下载工具，展开任务内文件和目录结构。", ["读取下载工具", "生成文件树", "准备勾选"]);
   try {
     if (!state.torrentFiles[hash]) {
       const data = await getJson(`/api/qbit/torrents/${encodeURIComponent(hash)}/files`);
@@ -803,7 +811,7 @@ function writeTargetSuggestionsCache(hash, targets) {
 
 async function ensureTargetSuggestions(hash, holder, force = false) {
   if (!force && state.targetSuggestions[hash]) return;
-  holder.innerHTML = fileLoadingPanel("正在计算 Jellyfin 目标目录", "匹配已有目录，并查询 TMDb/LLM 生成符合规则的文件夹名。", ["匹配已有目录", "查询 TMDb", "LLM 命名"]);
+  holder.innerHTML = fileLoadingPanel("正在计算 Jellyfin 目标目录", "匹配已有目录，并查询 TMDb/大模型生成符合规则的文件夹名。", ["匹配已有目录", "查询 TMDb", "大模型命名"]);
   const torrent = state.torrents.find((item) => item.hash === hash);
   const data = await getJson(`/api/jellyfin/targets?query=${encodeURIComponent(torrent?.name || "")}`);
   state.targetSuggestions[hash] = data.targets || [];
@@ -963,7 +971,7 @@ async function moveSelected(hash) {
     $("torrentStatus").textContent = "当前电视剧目标无法识别季集号，不能自动移动。";
     return;
   }
-  const ok = confirm(`将移动 ${selected.length} 个勾选项到 Jellyfin/${targetCategory}/${targetFolder}。全部成功后会删除 qB 任务，并删除未勾选的剩余文件。继续吗？`);
+  const ok = confirm(`将移动 ${selected.length} 个勾选项到 Jellyfin/${targetCategory}/${targetFolder}。全部成功后会删除下载任务，并删除未勾选的剩余文件。继续吗？`);
   if (!ok) return;
   setMoveBusy(hash, true);
   try {
@@ -983,7 +991,7 @@ async function moveSelected(hash) {
     renderDownloadSummary();
     await loadTorrents(true);
   } catch (err) {
-    $("torrentStatus").textContent = `移动失败，qB 任务和剩余文件已保留：${err.message}`;
+    $("torrentStatus").textContent = `移动失败，下载任务和剩余文件已保留：${err.message}`;
   } finally {
     setMoveBusy(hash, false);
   }

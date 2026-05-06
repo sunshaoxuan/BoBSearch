@@ -6,6 +6,13 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.3] - 2026-05-06
+
+### Changed
+
+- UI service labels now use product-facing names: search tool, download tool, and large model.
+- Health panel errors are sanitized so implementation names are not shown in the interface.
+
 ## [1.0.2] - 2026-05-06
 
 ### Changed
