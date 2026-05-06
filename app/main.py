@@ -12,8 +12,8 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import Settings, get_settings
 from .history import SearchHistoryStore
-from .models import MoveSelectedRequest, SearchResponse
-from .qbit import QbitClient, jellyfin_target_suggestions_with_llm, qbit_health
+from .models import MoveSelectedRequest, RefreshTargetsRequest, SearchResponse
+from .qbit import QbitClient, jellyfin_target_suggestions_with_llm, qbit_health, refresh_targets_existing
 from .search import load_indexers, search_and_enrich
 
 settings = get_settings()
@@ -224,6 +224,11 @@ async def api_qbit_delete_with_files(torrent_hash: str, _: None = Depends(requir
 @app.get("/api/jellyfin/targets")
 async def api_jellyfin_targets(query: str, _: None = Depends(require_login)):
     return {"targets": await jellyfin_target_suggestions_with_llm(query, get_settings())}
+
+
+@app.post("/api/jellyfin/targets/refresh")
+async def api_jellyfin_targets_refresh(payload: RefreshTargetsRequest, _: None = Depends(require_login)):
+    return {"targets": refresh_targets_existing(payload.targets, get_settings())}
 
 
 @app.post("/api/qbit/torrents/{torrent_hash}/move-selected")

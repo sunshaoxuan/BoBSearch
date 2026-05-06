@@ -20,6 +20,7 @@ from app.qbit import (
     parse_episode_info,
     qbit_path_to_local,
     release_search_text,
+    refresh_targets_existing,
     series_rename_base,
     safe_relative_path,
     target_score,
@@ -593,6 +594,36 @@ def test_llm_target_existing_state_is_refreshed_from_filesystem(monkeypatch, tmp
         assert suggestions[0]["existing"] is True
 
     asyncio.run(run())
+
+
+def test_refresh_targets_existing_updates_without_llm(tmp_path):
+    cfg = settings(tmp_path)
+    target = tmp_path / "jellyfin" / "movies" / "Existing Movie (2026) [tmdbid-1]"
+    target.mkdir(parents=True)
+
+    refreshed = refresh_targets_existing(
+        [
+            {
+                "category": "movies",
+                "folder": "Existing Movie (2026) [tmdbid-1]",
+                "score": 0.4,
+                "reason": "cached",
+                "existing": False,
+            },
+            {
+                "category": "movies",
+                "folder": "Missing Movie (2026) [tmdbid-2]",
+                "score": 0.9,
+                "reason": "cached",
+                "existing": True,
+            },
+        ],
+        cfg,
+    )
+
+    states = {item["folder"]: item["existing"] for item in refreshed}
+    assert states["Existing Movie (2026) [tmdbid-1]"] is True
+    assert states["Missing Movie (2026) [tmdbid-2]"] is False
 
 
 def test_jellyfin_target_suggestions_generate_fallback(tmp_path):

@@ -101,6 +101,10 @@ class MoveSelectedRequest(BaseModel):
     rename_plan: dict | None = None
 
 
+class RefreshTargetsRequest(BaseModel):
+    targets: list[dict]
+
+
 class MoveSelectedResponse(BaseModel):
     ok: bool
     moved: list[dict[str, str]] = Field(default_factory=list)

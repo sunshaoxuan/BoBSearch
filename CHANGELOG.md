@@ -6,6 +6,14 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.4] - 2026-05-06
+
+### Changed
+
+- Reopening a download task now reuses the cached file tree instead of rebuilding it every time.
+- Target-folder status refresh now uses a lightweight endpoint that only checks current Jellyfin filesystem state.
+- Full target-name generation only runs on first open or when the user clears/regenerates the target name.
+
 ## [1.0.3] - 2026-05-06
 
 ### Changed

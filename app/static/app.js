@@ -643,6 +643,7 @@ function restoreOpenTorrentFiles() {
     }
     if (state.torrentFiles[hash] && state.targetSuggestions[hash]) {
       renderTorrentFiles(hash);
+      refreshTargetState(hash);
     } else {
       holder.innerHTML = `<div class="mini-status">文件面板已展开，正在等待下次读取。</div>`;
     }
@@ -772,14 +773,19 @@ async function toggleTorrentFiles(hash) {
     toggle.setAttribute("aria-label", "收起文件");
     toggle.setAttribute("aria-expanded", "true");
   }
-  holder.innerHTML = fileLoadingPanel("正在读取文件列表", "连接下载工具，展开任务内文件和目录结构。", ["读取下载工具", "生成文件树", "准备勾选"]);
+  holder.innerHTML = state.torrentFiles[hash]
+    ? fileLoadingPanel("正在检查目标状态", "检查 Jellyfin 目标目录是否已经存在。", ["刷新状态"])
+    : fileLoadingPanel("正在读取文件列表", "连接下载工具，展开任务内文件和目录结构。", ["读取下载工具", "生成文件树", "准备勾选"]);
   try {
     if (!state.torrentFiles[hash]) {
       const data = await getJson(`/api/qbit/torrents/${encodeURIComponent(hash)}/files`);
       state.torrentFiles[hash] = data.files || [];
     }
-    delete state.targetSuggestions[hash];
-    await ensureTargetSuggestions(hash, holder, true);
+    if (state.targetSuggestions[hash]) {
+      await refreshTargetState(hash);
+    } else {
+      await ensureTargetSuggestions(hash, holder);
+    }
     state.selectedFiles[hash] = state.selectedFiles[hash] || new Set();
     renderTorrentFiles(hash);
   } catch (err) {
@@ -816,6 +822,18 @@ async function ensureTargetSuggestions(hash, holder, force = false) {
   const data = await getJson(`/api/jellyfin/targets?query=${encodeURIComponent(torrent?.name || "")}`);
   state.targetSuggestions[hash] = data.targets || [];
   writeTargetSuggestionsCache(hash, state.targetSuggestions[hash]);
+}
+
+async function refreshTargetState(hash) {
+  const targets = state.targetSuggestions[hash];
+  if (!targets || !targets.length) return;
+  const data = await postJson("/api/jellyfin/targets/refresh", { targets });
+  state.targetSuggestions[hash] = data.targets || [];
+  writeTargetSuggestionsCache(hash, state.targetSuggestions[hash]);
+  const holder = $(`files-${hash}`);
+  if (holder?.dataset.open === "1") {
+    renderTorrentFiles(hash);
+  }
 }
 
 function fileLoadingPanel(title, text, steps) {
