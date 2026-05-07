@@ -7,9 +7,10 @@ import httpx
 import pytest
 
 from app.config import Settings
-from app.models import QbitTorrent
+from app.models import QbitTorrent, SearchResult
 from app.qbit import (
     QbitClient,
+    TorrentAlreadyExistsError,
     build_file_tree,
     compress_selected_paths,
     folder_name_from_llm_target,
@@ -22,6 +23,7 @@ from app.qbit import (
     qbit_path_to_local,
     release_search_text,
     refresh_targets_existing,
+    result_info_hash,
     series_rename_base,
     safe_relative_path,
     target_score,
@@ -57,8 +59,8 @@ def torrent() -> QbitTorrent:
     )
 
 
-def mock_response(status_code: int = 200) -> httpx.Response:
-    return httpx.Response(status_code, request=httpx.Request("POST", "http://qbit.test/api"))
+def mock_response(status_code: int = 200, text: str = "") -> httpx.Response:
+    return httpx.Response(status_code, text=text, request=httpx.Request("POST", "http://qbit.test/api"))
 
 
 def test_safe_relative_path_rejects_escape():
@@ -493,6 +495,64 @@ def test_delete_torrent_raises_when_task_remains(monkeypatch, tmp_path):
         await client.close()
 
     asyncio.run(run())
+
+
+def test_add_result_is_idempotent_when_hash_already_exists(monkeypatch, tmp_path):
+    async def run():
+        client = QbitClient(settings(tmp_path))
+        calls = []
+
+        async def fake_ensure_category():
+            return None
+
+        async def fake_exists(info_hash):
+            calls.append(info_hash)
+            return True
+
+        monkeypatch.setattr(client, "ensure_category", fake_ensure_category)
+        monkeypatch.setattr(client, "torrent_exists", fake_exists)
+
+        with pytest.raises(TorrentAlreadyExistsError, match="already exists"):
+            await client.add_result(SearchResult(token="t", title="Movie", info_hash="abc123", magnet_uri="magnet:?xt=urn:btih:abc123"))
+        assert calls == ["ABC123"]
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_add_result_treats_qbit_fails_as_duplicate_after_recheck(monkeypatch, tmp_path):
+    async def run():
+        client = QbitClient(settings(tmp_path))
+        exists_calls = []
+        post_calls = []
+
+        async def fake_ensure_category():
+            return None
+
+        async def fake_exists(info_hash):
+            exists_calls.append(info_hash)
+            return len(exists_calls) > 1
+
+        async def fake_post(endpoint, data):
+            post_calls.append((endpoint, data["urls"]))
+            return mock_response(text="Fails.")
+
+        monkeypatch.setattr(client, "ensure_category", fake_ensure_category)
+        monkeypatch.setattr(client, "torrent_exists", fake_exists)
+        monkeypatch.setattr(client.client, "post", fake_post)
+
+        with pytest.raises(TorrentAlreadyExistsError, match="already exists"):
+            await client.add_result(SearchResult(token="t", title="Movie", info_hash="abc123", magnet_uri="magnet:?xt=urn:btih:abc123"))
+        assert exists_calls == ["ABC123", "ABC123"]
+        assert post_calls == [("/api/v2/torrents/add", "magnet:?xt=urn:btih:abc123")]
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_result_info_hash_falls_back_to_magnet():
+    result = SearchResult(token="t", title="Movie", magnet_uri="magnet:?xt=urn:btih:abcdef1234567890abcdef1234567890abcdef12")
+    assert result_info_hash(result) == "ABCDEF1234567890ABCDEF1234567890ABCDEF12"
 
 
 def test_move_success_allows_non_staging_category(monkeypatch, tmp_path):

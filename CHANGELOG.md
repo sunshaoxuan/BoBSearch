@@ -6,6 +6,13 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.8] - 2026-05-08
+
+### Fixed
+
+- Adding an already existing download task is now idempotent and returns "下载任务已存在" instead of HTTP 500.
+- qBittorrent `Fails.` responses are rechecked by info hash so duplicate add attempts are handled as successful no-ops.
+
 ## [1.0.7] - 2026-05-06
 
 ### Changed

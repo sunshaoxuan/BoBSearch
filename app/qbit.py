@@ -24,6 +24,10 @@ VIDEO_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2t
 SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".vtt", ".sub", ".sup"}
 
 
+class TorrentAlreadyExistsError(RuntimeError):
+    pass
+
+
 def safe_relative_path(value: str) -> PurePosixPath:
     path = PurePosixPath(value.strip().replace("\\", "/"))
     if not str(path) or path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
@@ -33,6 +37,15 @@ def safe_relative_path(value: str) -> PurePosixPath:
 
 def safe_target_folder(value: str) -> PurePosixPath:
     return safe_relative_path(value)
+
+
+def result_info_hash(result: SearchResult) -> str | None:
+    value = str(result.info_hash or "").strip()
+    if value:
+        return value.upper()
+    url = str(result.magnet_uri or result.link or "")
+    match = re.search(r"(?i)btih:([a-f0-9]{32,40})", url)
+    return match.group(1).upper() if match else None
 
 
 def season_folder_name(season_number: int) -> str:
@@ -870,6 +883,9 @@ class QbitClient:
         url = result.magnet_uri or result.link
         if not url:
             raise ValueError("Result has no magnet or link")
+        info_hash = result_info_hash(result)
+        if info_hash and await self.torrent_exists(info_hash):
+            raise TorrentAlreadyExistsError("Download task already exists")
         r = await self.client.post(
             "/api/v2/torrents/add",
             data={
@@ -880,6 +896,8 @@ class QbitClient:
         )
         r.raise_for_status()
         if r.text.strip().lower() not in {"ok.", "ok"}:
+            if info_hash and await self.torrent_exists(info_hash):
+                raise TorrentAlreadyExistsError("Download task already exists")
             raise RuntimeError(f"qBittorrent add failed: {r.text[:200]}")
 
     async def torrents(self) -> list[QbitTorrent]:

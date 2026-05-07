@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .config import Settings, get_settings
 from .history import SearchHistoryStore
 from .models import MoveSelectedRequest, RefreshTargetsRequest, SearchResponse, TargetSuggestionsRequest
-from .qbit import QbitClient, jellyfin_target_suggestions_with_llm, qbit_health, refresh_targets_existing
+from .qbit import QbitClient, TorrentAlreadyExistsError, jellyfin_target_suggestions_with_llm, qbit_health, refresh_targets_existing
 from .search import load_indexers, search_and_enrich
 
 settings = get_settings()
@@ -162,6 +162,12 @@ async def api_add(payload: dict, _: None = Depends(require_login)):
     client = QbitClient(get_settings())
     try:
         await client.add_result(result)
+    except TorrentAlreadyExistsError:
+        return JSONResponse({"ok": True, "duplicate": True, "message": "下载任务已存在", "title": result.title})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         await client.close()
     return JSONResponse({"ok": True, "message": "已添加到下载", "title": result.title})
