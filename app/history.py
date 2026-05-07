@@ -46,6 +46,21 @@ class SearchHistoryStore:
             return None
         return next((result for result in response.results if result.token == token), None)
 
+    def delete(self, history_id: str) -> bool:
+        data = self._read()
+        before = len(data["items"])
+        data["items"] = [item for item in data["items"] if item.get("id") != history_id]
+        if len(data["items"]) == before:
+            return False
+        self._write(data)
+        return True
+
+    def clear(self) -> int:
+        data = self._read()
+        count = len(data["items"])
+        self._write({"version": 1, "items": []})
+        return count
+
     def save(self, response: SearchResponse, category: str, sort: str) -> dict[str, Any]:
         data = self._read()
         now = self._now()

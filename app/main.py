@@ -146,6 +146,25 @@ async def api_search_history_item(history_id: str, _: None = Depends(require_log
     return {"item": store._metadata(item), "response": response}
 
 
+@app.delete("/api/search/history/{history_id}")
+async def api_search_history_delete(history_id: str, _: None = Depends(require_login)):
+    deleted = history_store().delete(history_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="找不到该历史搜索")
+    SEARCH_CACHE.pop(history_id, None)
+    return {"ok": True, "message": "已删除该历史搜索"}
+
+
+@app.delete("/api/search/history")
+async def api_search_history_clear(_: None = Depends(require_login)):
+    store = history_store()
+    ids = [item["id"] for item in store.list_items()]
+    count = store.clear()
+    for history_id in ids:
+        SEARCH_CACHE.pop(history_id, None)
+    return {"ok": True, "message": f"已清空 {count} 条历史搜索", "count": count}
+
+
 @app.post("/api/qbit/add")
 async def api_add(payload: dict, _: None = Depends(require_login)):
     query = str(payload.get("query") or "")

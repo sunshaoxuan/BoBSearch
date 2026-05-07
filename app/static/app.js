@@ -63,6 +63,13 @@ async function getJson(url) {
   return body;
 }
 
+async function deleteJson(url) {
+  const res = await fetch(url, { method: "DELETE" });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || body.message || `HTTP ${res.status}`);
+  return body;
+}
+
 async function health() {
   $("status").textContent = "检查中...";
   const res = await fetch("/api/health");
@@ -518,16 +525,19 @@ function renderSearchHistorySelect(errorText = "") {
   if (!select) return;
   if (errorText) {
     select.innerHTML = `<option value="">${escapeHtml(errorText)}</option>`;
+    updateHistoryActions();
     return;
   }
   if (!state.searchHistory.length) {
     select.innerHTML = `<option value="">历史搜索：暂无记录</option>`;
+    updateHistoryActions();
     return;
   }
   select.innerHTML = [
     `<option value="">历史搜索：选择一条已保存结果</option>`,
     ...state.searchHistory.map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === state.currentHistoryId ? "selected" : ""}>${escapeHtml(historyLabel(item))}</option>`),
   ].join("");
+  updateHistoryActions();
 }
 
 function historyLabel(item) {
@@ -599,6 +609,52 @@ function applyHistoryResponse(item, response) {
   }
   renderSearchHistorySelect();
   render();
+}
+
+function updateHistoryActions() {
+  const deleteBtn = $("historyDeleteBtn");
+  const clearBtn = $("historyClearBtn");
+  if (deleteBtn) deleteBtn.disabled = !state.currentHistoryId || state.isSearching || state.movingHash;
+  if (clearBtn) clearBtn.disabled = !state.searchHistory.length || state.isSearching || state.movingHash;
+}
+
+function clearSearchView(message) {
+  state.response = null;
+  state.results = [];
+  state.currentHistoryId = null;
+  state.currentHistoryItem = null;
+  state.page = 1;
+  state.inResultsQuery = "";
+  state.latestRestoreAttempted = true;
+  $("inResultsQuery").value = "";
+  $("status").textContent = message;
+  renderSearchHistorySelect();
+  render();
+}
+
+async function deleteCurrentHistory() {
+  if (!state.currentHistoryId || state.isSearching || state.movingHash) return;
+  const item = state.currentHistoryItem || state.searchHistory.find((entry) => entry.id === state.currentHistoryId);
+  if (!confirm(`删除这条历史搜索？\n${item?.query || state.query || ""}`)) return;
+  try {
+    await deleteJson(`/api/search/history/${encodeURIComponent(state.currentHistoryId)}`);
+    await loadSearchHistory();
+    clearSearchView("已删除当前历史搜索。");
+  } catch (err) {
+    $("status").textContent = `删除历史搜索失败：${err.message}`;
+  }
+}
+
+async function clearSearchHistory() {
+  if (!state.searchHistory.length || state.isSearching || state.movingHash) return;
+  if (!confirm(`清空全部 ${state.searchHistory.length} 条历史搜索？`)) return;
+  try {
+    const data = await deleteJson("/api/search/history");
+    await loadSearchHistory();
+    clearSearchView(data.message || "已清空历史搜索。");
+  } catch (err) {
+    $("status").textContent = `清空历史搜索失败：${err.message}`;
+  }
 }
 
 function startTorrentAutoRefresh() {
@@ -1122,6 +1178,8 @@ $("sort").addEventListener("change", () => {
 $("historySelect").addEventListener("change", (event) => {
   loadHistoryItem(event.target.value);
 });
+$("historyDeleteBtn").addEventListener("click", deleteCurrentHistory);
+$("historyClearBtn").addEventListener("click", clearSearchHistory);
 document.addEventListener("click", (event) => {
   const trigger = event.target.closest(".collapsible-text");
   if (!trigger) return;

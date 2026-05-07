@@ -172,7 +172,8 @@ button, input, select {
 
 .history-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 104px 104px;
+  gap: 10px;
 }
 
 #historySelect {
@@ -209,6 +210,11 @@ button:disabled { cursor: not-allowed; opacity: 0.46; }
 button.ghost {
   background: rgba(255, 255, 255, 0.74);
   color: var(--accent-strong);
+}
+
+button.ghost.danger {
+  border-color: rgba(180, 35, 24, 0.32);
+  color: var(--danger);
 }
 
 .collapsible-text {

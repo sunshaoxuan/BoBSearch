@@ -63,6 +63,27 @@ def test_history_trims_to_limit(tmp_path):
     assert first["id"] not in ids
 
 
+def test_history_delete_single_item(tmp_path):
+    store = SearchHistoryStore(settings(tmp_path))
+    first = store.save(response("one"), "all", "seeders")
+    second = store.save(response("two"), "all", "seeders")
+
+    assert store.delete(first["id"]) is True
+    assert store.delete(first["id"]) is False
+    assert [item["id"] for item in store.list_items()] == [second["id"]]
+    assert store.get_response(first["id"]) is None
+
+
+def test_history_clear_all_items(tmp_path):
+    store = SearchHistoryStore(settings(tmp_path))
+    store.save(response("one"), "all", "seeders")
+    store.save(response("two"), "all", "seeders")
+
+    assert store.clear() == 2
+    assert store.list_items() == []
+    assert store.latest() is None
+
+
 def test_history_quarantines_corrupt_json(tmp_path):
     cfg = settings(tmp_path)
     path = tmp_path / "search-history.json"

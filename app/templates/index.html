@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BoBSearch</title>
   <link rel="icon" href="/static/brand/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/app.css?v=1.0.8">
+  <link rel="stylesheet" href="/static/app.css?v=1.0.9">
 </head>
 <body>
   <div class="app-shell">
@@ -59,6 +59,8 @@
               <select id="historySelect" aria-label="历史搜索">
                 <option value="">历史搜索：暂无记录</option>
               </select>
+              <button id="historyDeleteBtn" class="ghost danger" type="button" disabled>删除当前</button>
+              <button id="historyClearBtn" class="ghost danger" type="button" disabled>清空历史</button>
             </div>
           </section>
 
@@ -104,6 +106,6 @@
     </main>
   </div>
 
-  <script src="/static/app.js?v=1.0.8"></script>
+  <script src="/static/app.js?v=1.0.9"></script>
 </body>
 </html>

@@ -6,6 +6,14 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.9] - 2026-05-08
+
+### Added
+
+- Search history can now be cleared completely from the UI.
+- The currently selected history item can now be deleted from the UI.
+- Added backend APIs for deleting one saved search history item or clearing all saved history.
+
 ## [1.0.8] - 2026-05-08
 
 ### Fixed
