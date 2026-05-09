@@ -6,6 +6,13 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.12] - 2026-05-09
+
+### Changed
+
+- Health panel labels now use `主模型` and `备用模型`.
+- Local deployment now configures the fallback model to `gpt-5.4` on the current `ccnode` endpoint instead of leaving it empty.
+
 ## [1.0.11] - 2026-05-09
 
 ### Added
