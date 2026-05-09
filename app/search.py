@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 
 from .config import Settings
+from .llm_client import chat_completion
 from .models import IndexerStatus, RelevanceSummary, SearchResponse, SearchResult, SourceItem
 
 
@@ -326,38 +327,32 @@ async def enrich_with_llm(settings: Settings, results: list[SearchResult]) -> st
         "results": llm_payload(results),
     }
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            r = await client.post(
-                f"{settings.llm_base_url.rstrip('/')}/chat/completions",
-                headers={"Authorization": f"Bearer {settings.llm_api_key}"},
-                json={
-                    "model": settings.llm_model,
-                    "messages": [
-                        {"role": "system", "content": "You return valid compact JSON only."},
-                        {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-                    ],
-                    "temperature": 0.1,
-                    "max_tokens": 2048,
-                    "response_format": {"type": "json_object"},
-                },
-            )
-            r.raise_for_status()
-            content = r.json()["choices"][0]["message"]["content"]
-            data = json.loads(content)
-            items = data.get("items") if isinstance(data, dict) else None
-            if not isinstance(items, list):
-                return "LLM response did not contain items"
-            by_token = {r.token: r for r in results}
-            for item in items:
-                if not isinstance(item, dict) or item.get("token") not in by_token:
-                    continue
-                target = by_token[item["token"]]
-                target.normalized_name = item.get("normalized_name")
-                target.tags = [str(x) for x in item.get("tags") or []][:12]
-                target.quality_flags = [str(x) for x in item.get("quality_flags") or []][:8]
-                target.recommendation = item.get("recommendation")
-                target.group_note = item.get("group_note")
-            return None
+        response_json, endpoint_name = await chat_completion(
+            settings,
+            system_content="You return valid compact JSON only.",
+            user_content=json.dumps(prompt, ensure_ascii=False),
+            temperature=0.1,
+            max_tokens=2048,
+            response_format={"type": "json_object"},
+        )
+        content = response_json["choices"][0]["message"]["content"]
+        data = json.loads(content)
+        items = data.get("items") if isinstance(data, dict) else None
+        if not isinstance(items, list):
+            return "LLM response did not contain items"
+        by_token = {r.token: r for r in results}
+        for item in items:
+            if not isinstance(item, dict) or item.get("token") not in by_token:
+                continue
+            target = by_token[item["token"]]
+            target.normalized_name = item.get("normalized_name")
+            target.tags = [str(x) for x in item.get("tags") or []][:12]
+            target.quality_flags = [str(x) for x in item.get("quality_flags") or []][:8]
+            target.recommendation = item.get("recommendation")
+            target.group_note = item.get("group_note")
+        if endpoint_name == "fallback":
+            return "主模型失败，已切换备用模型"
+        return None
     except Exception as exc:
         return f"{type(exc).__name__}: {str(exc)[:220]}"
 

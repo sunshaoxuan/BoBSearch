@@ -6,6 +6,15 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.13] - 2026-05-09
+
+### Changed
+
+- Fallback-model configuration can now point to a separate OpenAI-compatible endpoint such as Ollama `/v1`, with an empty fallback API key.
+- Health checks now validate the primary and fallback model against their own real endpoints instead of reusing the primary-model bearer token.
+- Search-result LLM enrichment and Jellyfin target generation now actually fail over from the primary model to the configured fallback model.
+- Local deployment now points the fallback model to `http://ccnode.briconbric.com:22545/v1` with `qwen3:14b`.
+
 ## [1.0.12] - 2026-05-09
 
 ### Changed

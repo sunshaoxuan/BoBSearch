@@ -12,6 +12,7 @@ from urllib.parse import quote_plus
 import httpx
 
 from .config import Settings
+from .llm_client import chat_completion
 from .models import QbitFileNode, QbitTorrent, SearchResult
 
 
@@ -539,42 +540,34 @@ async def llm_generated_target_suggestion(query: str, settings: Settings, file_n
         },
     }
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            r = await client.post(
-                f"{settings.llm_base_url.rstrip('/')}/chat/completions",
-                headers={"Authorization": f"Bearer {settings.llm_api_key}"},
-                json={
-                    "model": settings.llm_model,
-                    "messages": [
-                        {"role": "system", "content": "You return valid compact JSON only. Use TMDb IDs for folder naming."},
-                        {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-                    ],
-                    "temperature": 0.05,
-                    "max_tokens": 900,
-                    "response_format": {"type": "json_object"},
-                },
+        response_json, _ = await chat_completion(
+            settings,
+            system_content="You return valid compact JSON only. Use TMDb IDs for folder naming.",
+            user_content=json.dumps(prompt, ensure_ascii=False),
+            temperature=0.05,
+            max_tokens=900,
+            response_format={"type": "json_object"},
+        )
+        content = response_json["choices"][0]["message"]["content"]
+        data = json.loads(content)
+        target = data.get("target") if isinstance(data, dict) else None
+        if isinstance(target, dict):
+            parsed = folder_name_from_llm_target(target)
+            if parsed:
+                return parsed
+        if len(tmdb_candidates) == 1:
+            candidate = tmdb_candidates[0]
+            return folder_name_from_llm_target(
+                {
+                    "category": candidate["category"],
+                    "title": candidate["title"],
+                    "year": candidate["year"],
+                    "tmdb_id": candidate["tmdb_id"],
+                    "score": 0.82,
+                    "reason": "TMDb 网站候选唯一匹配",
+                }
             )
-            r.raise_for_status()
-            content = r.json()["choices"][0]["message"]["content"]
-            data = json.loads(content)
-            target = data.get("target") if isinstance(data, dict) else None
-            if isinstance(target, dict):
-                parsed = folder_name_from_llm_target(target)
-                if parsed:
-                    return parsed
-            if len(tmdb_candidates) == 1:
-                candidate = tmdb_candidates[0]
-                return folder_name_from_llm_target(
-                    {
-                        "category": candidate["category"],
-                        "title": candidate["title"],
-                        "year": candidate["year"],
-                        "tmdb_id": candidate["tmdb_id"],
-                        "score": 0.82,
-                        "reason": "TMDb 网站候选唯一匹配",
-                    }
-                )
-            return None
+        return None
     except Exception:
         if len(tmdb_candidates) == 1:
             candidate = tmdb_candidates[0]

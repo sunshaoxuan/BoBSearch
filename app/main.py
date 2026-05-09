@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import Settings, get_settings
 from .history import SearchHistoryStore
+from .llm_client import fallback_endpoint, health_check, primary_endpoint
 from .models import MoveSelectedRequest, RefreshTargetsRequest, SearchResponse, TargetSuggestionsRequest
 from .qbit import QbitClient, TorrentAlreadyExistsError, jellyfin_target_suggestions_with_llm, qbit_health, refresh_targets_existing
 from .search import load_indexers, search_and_enrich
@@ -75,7 +76,7 @@ async def index(request: Request):
 async def health(_: None = Depends(require_login)):
     settings = get_settings()
     jackett = {"ok": False}
-    llm = {"ok": False}
+    llm = {"configured": True, "ok": False}
     llm_fallback = {"configured": False, "ok": False, "message": "未配置"}
     try:
         async with httpx.AsyncClient(timeout=8) as client:
@@ -88,21 +89,14 @@ async def health(_: None = Depends(require_login)):
     except Exception as exc:
         jackett = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
     try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            r = await client.get(f"{settings.llm_base_url.rstrip('/')}/models", headers={"Authorization": f"Bearer {settings.llm_api_key}"})
-            r.raise_for_status()
-            llm = {"configured": True, "ok": True, "model": settings.llm_model}
+        llm = await health_check(primary_endpoint(settings))
     except Exception as exc:
         llm = {"configured": True, "ok": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
 
-    if settings.llm_fallback_model:
-        fallback_base_url = settings.llm_fallback_base_url or settings.llm_base_url
-        fallback_api_key = settings.llm_fallback_api_key or settings.llm_api_key
+    fallback = fallback_endpoint(settings)
+    if fallback:
         try:
-            async with httpx.AsyncClient(timeout=8) as client:
-                r = await client.get(f"{fallback_base_url.rstrip('/')}/models", headers={"Authorization": f"Bearer {fallback_api_key}"})
-                r.raise_for_status()
-                llm_fallback = {"configured": True, "ok": True, "model": settings.llm_fallback_model}
+            llm_fallback = await health_check(fallback)
         except Exception as exc:
             llm_fallback = {"configured": True, "ok": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
     return {

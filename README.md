@@ -1,6 +1,6 @@
 # BoBSearch
 
-Current release: **1.0.12**
+Current release: **1.0.13**
 
 BoBSearch is a self-hosted media search and download management console. It searches Jackett indexers, deduplicates results, uses an OpenAI-compatible LLM to summarize releases, adds selected resources to qBittorrent, and moves completed downloads into a Jellyfin library.
 
@@ -64,7 +64,7 @@ Important groups:
 - `JACKETT_*`: Jackett API URL, API key, and indexer config mount.
 - `QBIT_*`: qBittorrent API URL, credentials, category, and path mapping.
 - `JELLYFIN_*`: Jellyfin library path mounted into BoBSearch.
-- `LLM_*`: OpenAI-compatible API base URL, key, main model, and optional fallback model.
+- `LLM_*`: OpenAI-compatible API base URL, key, main model, and optional fallback model. Fallback can point to a separate Ollama `/v1` endpoint and may leave `LLM_FALLBACK_API_KEY` empty.
 - `SEARCH_*`: concurrency and timeout tuning.
 
 The qB path mapping is important:
