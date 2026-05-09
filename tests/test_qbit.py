@@ -280,6 +280,27 @@ def test_move_series_folder_skips_ads_and_renames_media(tmp_path):
     assert not (tmp_path / "jellyfin" / "series" / "权力的游戏" / "Season 01" / "广告.png").exists()
 
 
+def test_move_series_folder_uses_rename_plan_for_plain_episode_numbers(tmp_path):
+    cfg = settings(tmp_path)
+    folder = tmp_path / "config-downloads" / "movies-staging" / "黑夜告白01-02.2160p"
+    folder.mkdir(parents=True)
+    (folder / "01.2160p.mkv").write_text("ep1")
+    (folder / "02.2160p.mkv").write_text("ep2")
+
+    move_selected_files(
+        ["黑夜告白01-02.2160p"],
+        torrent(),
+        "series",
+        "黑夜告白/Season 01",
+        cfg,
+        rename_plan={"season_number": 1, "episode_numbers": [1, 2]},
+    )
+
+    season = tmp_path / "jellyfin" / "series" / "黑夜告白" / "Season 01"
+    assert (season / "黑夜告白 - S01E01.mkv").read_text() == "ep1"
+    assert (season / "黑夜告白 - S01E02.mkv").read_text() == "ep2"
+
+
 def test_move_series_without_episode_fails_before_delete(monkeypatch, tmp_path):
     async def run():
         cfg = settings(tmp_path)

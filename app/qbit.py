@@ -771,9 +771,67 @@ def season_from_target_folder(folder: str) -> tuple[str, int]:
     return "/".join(rel.parts[:-1]), int(match.group(1))
 
 
-def series_destination_name(source_rel: PurePosixPath, source: Path, torrent: QbitTorrent, series_folder: str, target_season: int) -> str | None:
+def leading_episode_number(source_rel: PurePosixPath) -> int | None:
+    match = re.match(r"^\s*0*(\d{1,3})(?:\D|$)", source_rel.stem)
+    if not match:
+        return None
+    value = int(match.group(1))
+    return value if value > 0 else None
+
+
+def series_rename_plan_overrides(
+    files: list[tuple[PurePosixPath, Path]],
+    rename_plan: dict[str, Any] | None,
+    series_folder: str,
+    target_season: int,
+) -> dict[str, str]:
+    if not isinstance(rename_plan, dict):
+        return {}
+    raw_episodes = rename_plan.get("episode_numbers") or []
+    if not isinstance(raw_episodes, list):
+        raw_episodes = [raw_episodes]
+    episode_numbers = [int(item) for item in raw_episodes if str(item).isdigit()]
+    plan_season = int(rename_plan.get("season_number") or 0)
+    if not episode_numbers or plan_season != target_season:
+        return {}
+    media_files = [(rel, path) for rel, path in files if is_video(path) or is_subtitle(path)]
+    if not media_files:
+        return {}
+    overrides: dict[str, str] = {}
+    if len(media_files) == 1:
+        rel, path = media_files[0]
+        overrides[rel.as_posix()] = f"{series_rename_base(Path(series_folder).name, target_season, episode_numbers)}{path.suffix}"
+        return overrides
+    video_files = [(rel, path) for rel, path in media_files if is_video(path)]
+    if len(video_files) != len(episode_numbers):
+        return {}
+    ordered: list[tuple[int, PurePosixPath, Path]] = []
+    for rel, path in video_files:
+        episode_number = leading_episode_number(rel)
+        if episode_number is None:
+            return {}
+        ordered.append((episode_number, rel, path))
+    ordered.sort(key=lambda item: item[0])
+    if [item[0] for item in ordered] != episode_numbers:
+        return {}
+    for episode_number, rel, path in ordered:
+        overrides[rel.as_posix()] = f"{series_rename_base(Path(series_folder).name, target_season, [episode_number])}{path.suffix}"
+    return overrides
+
+
+def series_destination_name(
+    source_rel: PurePosixPath,
+    source: Path,
+    torrent: QbitTorrent,
+    series_folder: str,
+    target_season: int,
+    rename_overrides: dict[str, str] | None = None,
+) -> str | None:
     if not (is_video(source) or is_subtitle(source)):
         return None
+    override = (rename_overrides or {}).get(source_rel.as_posix())
+    if override:
+        return override
     info = parse_episode_info(" ".join([str(source_rel), source.name, torrent.name]))
     if not info:
         raise ValueError(f"无法识别季集号：{source_rel}")
@@ -782,9 +840,18 @@ def series_destination_name(source_rel: PurePosixPath, source: Path, torrent: Qb
     return f"{series_rename_base(Path(series_folder).name, target_season, info['episode_numbers'])}{source.suffix}"
 
 
-def series_destination_name_from_rel(source_rel: PurePosixPath, torrent: QbitTorrent, series_folder: str, target_season: int) -> str | None:
+def series_destination_name_from_rel(
+    source_rel: PurePosixPath,
+    torrent: QbitTorrent,
+    series_folder: str,
+    target_season: int,
+    rename_overrides: dict[str, str] | None = None,
+) -> str | None:
     if not is_media_rel(source_rel):
         return None
+    override = (rename_overrides or {}).get(source_rel.as_posix())
+    if override:
+        return override
     info = parse_episode_info(" ".join([str(source_rel), source_rel.name, torrent.name]))
     if not info:
         raise ValueError(f"无法识别季集号：{source_rel}")
@@ -802,7 +869,14 @@ def skipped_existing_missing_source(source: Path, destination: Path) -> dict[str
     }
 
 
-def move_selected_files(selected_paths: list[str], torrent: QbitTorrent, target_category: str, target_folder: str, settings: Settings) -> list[dict[str, str]]:
+def move_selected_files(
+    selected_paths: list[str],
+    torrent: QbitTorrent,
+    target_category: str,
+    target_folder: str,
+    settings: Settings,
+    rename_plan: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
     base = qbit_path_to_local(torrent.save_path or settings.qbit_downloads_path, settings)
     target_root = jellyfin_target_path(target_category, target_folder, settings)
     target_root.mkdir(parents=True, exist_ok=True)
@@ -811,9 +885,11 @@ def move_selected_files(selected_paths: list[str], torrent: QbitTorrent, target_
         series_folder, target_season = season_from_target_folder(target_folder)
         for selected_rel in compress_selected_paths(selected_paths):
             selected_source = ensure_inside(base.joinpath(*selected_rel.parts), base)
+            source_files = selected_source_files(base, [selected_rel.as_posix()]) if selected_source.exists() else []
+            rename_overrides = series_rename_plan_overrides(source_files, rename_plan, series_folder, target_season)
             if not selected_source.exists():
                 if selected_rel.suffix:
-                    destination_name = series_destination_name_from_rel(selected_rel, torrent, series_folder, target_season)
+                    destination_name = series_destination_name_from_rel(selected_rel, torrent, series_folder, target_season, rename_overrides)
                     if destination_name and (target_root / destination_name).exists():
                         moved.append(skipped_existing_missing_source(selected_source, target_root / destination_name))
                         continue
@@ -821,9 +897,8 @@ def move_selected_files(selected_paths: list[str], torrent: QbitTorrent, target_
                     moved.append(skipped_existing_missing_source(selected_source, target_root))
                     continue
                 raise FileNotFoundError(f"Selected path does not exist: {selected_rel}")
-            source_files = selected_source_files(base, [selected_rel.as_posix()])
             for rel, source in source_files:
-                destination_name = series_destination_name(rel, source, torrent, series_folder, target_season)
+                destination_name = series_destination_name(rel, source, torrent, series_folder, target_season, rename_overrides)
                 if not destination_name:
                     continue
                 moved.append(move_or_skip_existing(source, target_root / destination_name))
@@ -980,7 +1055,7 @@ class QbitClient:
         if not selected_paths:
             raise ValueError("No files or folders selected")
         await self.stop_torrent(torrent_hash)
-        moved = move_selected_files(selected_paths, torrent, target_category, target_folder, self.settings)
+        moved = move_selected_files(selected_paths, torrent, target_category, target_folder, self.settings, rename_plan=rename_plan)
         await self.delete_torrent(torrent_hash, delete_files=True)
         return moved
 

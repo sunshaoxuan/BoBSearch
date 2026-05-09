@@ -6,6 +6,13 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.10] - 2026-05-09
+
+### Fixed
+
+- Series move-to-Jellyfin now uses the generated rename plan when torrent files are named only with plain episode numbers such as `01.mkv`, `02.mkv`.
+- Multi-episode TV packs that were correctly classified as series no longer fail during the move step just because the local filenames do not contain `SxxEyy`.
+
 ## [1.0.9] - 2026-05-08
 
 ### Added
