@@ -6,6 +6,13 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.11] - 2026-05-09
+
+### Added
+
+- Health status now shows both the primary large model and the optional fallback model separately.
+- Added optional `LLM_FALLBACK_BASE_URL`, `LLM_FALLBACK_API_KEY`, and `LLM_FALLBACK_MODEL` configuration entries.
+
 ## [1.0.10] - 2026-05-09
 
 ### Fixed

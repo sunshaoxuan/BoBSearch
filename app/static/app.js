@@ -82,7 +82,8 @@ function renderHealth(data) {
   $("healthPanel").innerHTML = `
     ${healthItem("搜索工具", data.jackett.ok, data.jackett.ok ? `${data.jackett.indexers} 个源` : userFacingServiceText(data.jackett.error))}
     ${healthItem("下载工具", data.qbit.ok, data.qbit.ok ? data.qbit.version : userFacingServiceText(data.qbit.error))}
-    ${healthItem("大模型", data.llm.ok, data.llm.ok ? data.llm.model : userFacingServiceText(data.llm.error))}
+    ${healthItem("大模型主模型", data.llm.ok, data.llm.ok ? data.llm.model : userFacingServiceText(data.llm.error))}
+    ${healthItem("大模型兜底", data.llm_fallback?.configured ? data.llm_fallback.ok : true, data.llm_fallback?.configured ? (data.llm_fallback.ok ? data.llm_fallback.model : userFacingServiceText(data.llm_fallback.error)) : "未配置")}
   `;
 }
 

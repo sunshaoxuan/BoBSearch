@@ -76,6 +76,7 @@ async def health(_: None = Depends(require_login)):
     settings = get_settings()
     jackett = {"ok": False}
     llm = {"ok": False}
+    llm_fallback = {"configured": False, "ok": False, "message": "未配置"}
     try:
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.get(
@@ -90,10 +91,27 @@ async def health(_: None = Depends(require_login)):
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.get(f"{settings.llm_base_url.rstrip('/')}/models", headers={"Authorization": f"Bearer {settings.llm_api_key}"})
             r.raise_for_status()
-            llm = {"ok": True, "model": settings.llm_model}
+            llm = {"configured": True, "ok": True, "model": settings.llm_model}
     except Exception as exc:
-        llm = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
-    return {"app": {"name": settings.app_name, "version": settings.app_version}, "jackett": jackett, "qbit": await qbit_health(settings), "llm": llm}
+        llm = {"configured": True, "ok": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+
+    if settings.llm_fallback_model:
+        fallback_base_url = settings.llm_fallback_base_url or settings.llm_base_url
+        fallback_api_key = settings.llm_fallback_api_key or settings.llm_api_key
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                r = await client.get(f"{fallback_base_url.rstrip('/')}/models", headers={"Authorization": f"Bearer {fallback_api_key}"})
+                r.raise_for_status()
+                llm_fallback = {"configured": True, "ok": True, "model": settings.llm_fallback_model}
+        except Exception as exc:
+            llm_fallback = {"configured": True, "ok": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    return {
+        "app": {"name": settings.app_name, "version": settings.app_version},
+        "jackett": jackett,
+        "qbit": await qbit_health(settings),
+        "llm": llm,
+        "llm_fallback": llm_fallback,
+    }
 
 
 @app.post("/api/search")

@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "BoBSearch"
-    app_version: str = "1.0.10"
+    app_version: str = "1.0.11"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     app_data_dir: str = "/app/data"
@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     llm_base_url: str
     llm_api_key: str
     llm_model: str = "gpt-5.5"
+    llm_fallback_base_url: str | None = None
+    llm_fallback_api_key: str | None = None
+    llm_fallback_model: str | None = None
 
     search_concurrency: int = 8
     indexer_timeout_seconds: float = 12
