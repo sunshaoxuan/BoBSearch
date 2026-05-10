@@ -6,6 +6,14 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.14] - 2026-05-10
+
+### Fixed
+
+- Fixed a TV rename bug where selecting multiple plain episode files such as `01.mkv` and `02.mkv` under a `01-02` pack could incorrectly apply the same multi-episode target name to both files.
+- Series rename-plan overrides are now computed once for the full selected batch, so `01` and `02` correctly become `S01E01` and `S01E02` instead of both becoming `S01E01-E02`.
+- Added a same-operation destination collision guard: if two selected source files would resolve to the same Jellyfin target filename, the move is aborted before any overwrite can happen.
+
 ## [1.0.13] - 2026-05-09
 
 ### Changed

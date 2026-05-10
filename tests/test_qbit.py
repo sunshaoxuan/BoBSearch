@@ -301,6 +301,45 @@ def test_move_series_folder_uses_rename_plan_for_plain_episode_numbers(tmp_path)
     assert (season / "黑夜告白 - S01E02.mkv").read_text() == "ep2"
 
 
+def test_move_series_individual_files_use_batch_rename_plan(tmp_path):
+    cfg = settings(tmp_path)
+    folder = tmp_path / "config-downloads" / "movies-staging" / "黑夜告白01-02.2160p"
+    folder.mkdir(parents=True)
+    (folder / "01.2160p.mkv").write_text("ep1")
+    (folder / "02.2160p.mkv").write_text("ep2")
+
+    move_selected_files(
+        ["黑夜告白01-02.2160p/01.2160p.mkv", "黑夜告白01-02.2160p/02.2160p.mkv"],
+        torrent(),
+        "series",
+        "黑夜告白/Season 01",
+        cfg,
+        rename_plan={"season_number": 1, "episode_numbers": [1, 2]},
+    )
+
+    season = tmp_path / "jellyfin" / "series" / "黑夜告白" / "Season 01"
+    assert (season / "黑夜告白 - S01E01.mkv").read_text() == "ep1"
+    assert (season / "黑夜告白 - S01E02.mkv").read_text() == "ep2"
+
+
+def test_move_series_detects_same_operation_destination_collision(tmp_path):
+    cfg = settings(tmp_path)
+    folder = tmp_path / "config-downloads" / "movies-staging" / "Pack"
+    folder.mkdir(parents=True)
+    (folder / "01.first.mkv").write_text("ep1")
+    (folder / "01.second.mkv").write_text("ep2")
+
+    with pytest.raises(ValueError, match="电视剧重命名冲突"):
+        move_selected_files(
+            ["Pack/01.first.mkv", "Pack/01.second.mkv"],
+            torrent(),
+            "series",
+            "黑夜告白/Season 01",
+            cfg,
+            rename_plan={"season_number": 1, "episode_numbers": [1, 1]},
+        )
+
+
 def test_move_series_without_episode_fails_before_delete(monkeypatch, tmp_path):
     async def run():
         cfg = settings(tmp_path)

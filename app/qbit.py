@@ -742,6 +742,22 @@ def selected_source_files(base: Path, selected_paths: list[str]) -> list[tuple[P
     return files
 
 
+def existing_selected_source_files(base: Path, selected_paths: list[str]) -> list[tuple[PurePosixPath, Path]]:
+    files: list[tuple[PurePosixPath, Path]] = []
+    for rel in compress_selected_paths(selected_paths):
+        source = ensure_inside(base.joinpath(*rel.parts), base)
+        if not source.exists():
+            continue
+        if source.is_dir():
+            for child in sorted(source.rglob("*")):
+                if child.is_file():
+                    child_rel = PurePosixPath(child.relative_to(base).as_posix())
+                    files.append((child_rel, child))
+        else:
+            files.append((rel, source))
+    return files
+
+
 def is_video(path: Path) -> bool:
     return path.suffix.casefold() in VIDEO_EXTENSIONS
 
@@ -862,6 +878,24 @@ def skipped_existing_missing_source(source: Path, destination: Path) -> dict[str
     }
 
 
+def ensure_unique_series_destinations(
+    files: list[tuple[PurePosixPath, Path]],
+    torrent: QbitTorrent,
+    series_folder: str,
+    target_season: int,
+    rename_overrides: dict[str, str],
+) -> None:
+    destinations: dict[str, PurePosixPath] = {}
+    for rel, source in files:
+        destination_name = series_destination_name(rel, source, torrent, series_folder, target_season, rename_overrides)
+        if not destination_name:
+            continue
+        previous = destinations.get(destination_name)
+        if previous and previous != rel:
+            raise ValueError(f"电视剧重命名冲突：{previous} 和 {rel} 都会命名为 {destination_name}")
+        destinations[destination_name] = rel
+
+
 def move_selected_files(
     selected_paths: list[str],
     torrent: QbitTorrent,
@@ -876,10 +910,12 @@ def move_selected_files(
     moved: list[dict[str, str]] = []
     if target_category == "series":
         series_folder, target_season = season_from_target_folder(target_folder)
+        all_existing_source_files = existing_selected_source_files(base, selected_paths)
+        rename_overrides = series_rename_plan_overrides(all_existing_source_files, rename_plan, series_folder, target_season)
+        ensure_unique_series_destinations(all_existing_source_files, torrent, series_folder, target_season, rename_overrides)
         for selected_rel in compress_selected_paths(selected_paths):
             selected_source = ensure_inside(base.joinpath(*selected_rel.parts), base)
             source_files = selected_source_files(base, [selected_rel.as_posix()]) if selected_source.exists() else []
-            rename_overrides = series_rename_plan_overrides(source_files, rename_plan, series_folder, target_season)
             if not selected_source.exists():
                 if selected_rel.suffix:
                     destination_name = series_destination_name_from_rel(selected_rel, torrent, series_folder, target_season, rename_overrides)
