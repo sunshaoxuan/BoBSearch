@@ -17,6 +17,7 @@ from app.qbit import (
     jellyfin_target_path,
     jellyfin_target_suggestions,
     jellyfin_target_suggestions_with_llm,
+    llm_series_file_episode_map,
     move_selected_files,
     parse_tmdb_page,
     parse_episode_info,
@@ -320,6 +321,76 @@ def test_move_series_individual_files_use_batch_rename_plan(tmp_path):
     season = tmp_path / "jellyfin" / "series" / "黑夜告白" / "Season 01"
     assert (season / "黑夜告白 - S01E01.mkv").read_text() == "ep1"
     assert (season / "黑夜告白 - S01E02.mkv").read_text() == "ep2"
+
+
+def test_move_series_file_episode_map_overrides_names(tmp_path):
+    cfg = settings(tmp_path)
+    folder = tmp_path / "config-downloads" / "movies-staging" / "黑夜告白01-02.2160p"
+    folder.mkdir(parents=True)
+    (folder / "01.2160p.mkv").write_text("ep1")
+    (folder / "02.2160p.mkv").write_text("ep2")
+
+    move_selected_files(
+        ["黑夜告白01-02.2160p/01.2160p.mkv", "黑夜告白01-02.2160p/02.2160p.mkv"],
+        torrent(),
+        "series",
+        "黑夜告白/Season 01",
+        cfg,
+        rename_plan={
+            "season_number": 1,
+            "episode_numbers": [1, 2],
+            "file_episode_map": {
+                "黑夜告白01-02.2160p/01.2160p.mkv": {"season_number": 1, "episode_numbers": [1]},
+                "黑夜告白01-02.2160p/02.2160p.mkv": {"season_number": 1, "episode_numbers": [2]},
+            },
+        },
+    )
+
+    season = tmp_path / "jellyfin" / "series" / "黑夜告白" / "Season 01"
+    assert (season / "黑夜告白 - S01E01.mkv").read_text() == "ep1"
+    assert (season / "黑夜告白 - S01E02.mkv").read_text() == "ep2"
+
+
+def test_llm_series_file_episode_map_parses_model_mapping(monkeypatch, tmp_path):
+    async def fake_chat_completion(*_args, **_kwargs):
+        return (
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"file_episode_map":{"黑夜告白01-02.2160p/01.2160p.mkv":{"season_number":1,"episode_numbers":[1]},"黑夜告白01-02.2160p/02.2160p.mkv":{"season_number":1,"episode_numbers":[2]}}}'
+                        }
+                    }
+                ]
+            },
+            "primary",
+        )
+
+    monkeypatch.setattr("app.qbit.chat_completion", fake_chat_completion)
+    cfg = settings(tmp_path)
+    folder = tmp_path / "config-downloads" / "movies-staging" / "黑夜告白01-02.2160p"
+    folder.mkdir(parents=True)
+    first = folder / "01.2160p.mkv"
+    second = folder / "02.2160p.mkv"
+    first.write_text("ep1")
+    second.write_text("ep2")
+
+    mapping = asyncio.run(
+        llm_series_file_episode_map(
+            cfg,
+            torrent(),
+            [
+                (Path("黑夜告白01-02.2160p/01.2160p.mkv"), first),
+                (Path("黑夜告白01-02.2160p/02.2160p.mkv"), second),
+            ],
+            "黑夜告白",
+            1,
+            {"season_number": 1, "episode_numbers": [1, 2]},
+        )
+    )
+
+    assert mapping["黑夜告白01-02.2160p/01.2160p.mkv"]["episode_numbers"] == [1]
+    assert mapping["黑夜告白01-02.2160p/02.2160p.mkv"]["episode_numbers"] == [2]
 
 
 def test_move_series_detects_same_operation_destination_collision(tmp_path):

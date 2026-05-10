@@ -796,6 +796,23 @@ def series_rename_plan_overrides(
 ) -> dict[str, str]:
     if not isinstance(rename_plan, dict):
         return {}
+    file_episode_map = rename_plan.get("file_episode_map")
+    if isinstance(file_episode_map, dict):
+        overrides: dict[str, str] = {}
+        for rel, path in files:
+            mapping = file_episode_map.get(rel.as_posix()) or file_episode_map.get(rel.name)
+            if not isinstance(mapping, dict):
+                continue
+            raw_episodes = mapping.get("episode_numbers") or []
+            if not isinstance(raw_episodes, list):
+                raw_episodes = [raw_episodes]
+            episode_numbers = [int(item) for item in raw_episodes if str(item).isdigit()]
+            season_number = int(mapping.get("season_number") or target_season)
+            if not episode_numbers or season_number != target_season:
+                continue
+            overrides[rel.as_posix()] = f"{series_rename_base(Path(series_folder).name, target_season, episode_numbers)}{path.suffix}"
+        if overrides:
+            return overrides
     raw_episodes = rename_plan.get("episode_numbers") or []
     if not isinstance(raw_episodes, list):
         raw_episodes = [raw_episodes]
@@ -894,6 +911,73 @@ def ensure_unique_series_destinations(
         if previous and previous != rel:
             raise ValueError(f"电视剧重命名冲突：{previous} 和 {rel} 都会命名为 {destination_name}")
         destinations[destination_name] = rel
+
+
+async def llm_series_file_episode_map(
+    settings: Settings,
+    torrent: QbitTorrent,
+    files: list[tuple[PurePosixPath, Path]],
+    series_folder: str,
+    target_season: int,
+    rename_plan: dict[str, Any] | None,
+) -> dict[str, Any]:
+    media_files = [(rel, path) for rel, path in files if is_video(path) or is_subtitle(path)]
+    if len(media_files) <= 1:
+        return {}
+    requested_episodes = []
+    if isinstance(rename_plan, dict):
+        raw_episodes = rename_plan.get("episode_numbers") or []
+        if not isinstance(raw_episodes, list):
+            raw_episodes = [raw_episodes]
+        requested_episodes = [int(item) for item in raw_episodes if str(item).isdigit()]
+    prompt = {
+        "task": "Assign each selected TV media file to the correct episode numbers for Jellyfin renaming.",
+        "series_title": Path(series_folder).name,
+        "torrent_name": torrent.name,
+        "target_season": target_season,
+        "requested_episode_numbers": requested_episodes,
+        "selected_media_files": [
+            {
+                "path": rel.as_posix(),
+                "name": path.name,
+                "is_video": is_video(path),
+                "is_subtitle": is_subtitle(path),
+                "size": path.stat().st_size,
+            }
+            for rel, path in media_files
+        ],
+        "rules": [
+            "Return strict JSON only.",
+            "Map each media file to the most likely episode_numbers within the target season.",
+            "For separate single-episode files like 01.mkv and 02.mkv, assign [1] and [2] separately, not [1,2] to both.",
+            "Only return episode numbers that are supported by the file naming evidence and requested_episode_numbers context.",
+            "Keep subtitle files aligned with their matching video files when obvious.",
+            "Do not assign the same single-episode destination to two different video files.",
+        ],
+        "schema": {
+            "file_episode_map": {
+                "relative/path.mkv": {
+                    "season_number": 1,
+                    "episode_numbers": [1],
+                }
+            }
+        },
+    }
+    try:
+        response_json, _ = await chat_completion(
+            settings,
+            system_content="You return valid compact JSON only.",
+            user_content=json.dumps(prompt, ensure_ascii=False),
+            temperature=0.05,
+            max_tokens=900,
+            response_format={"type": "json_object"},
+        )
+        content = response_json["choices"][0]["message"]["content"]
+        data = json.loads(content)
+        mapping = data.get("file_episode_map") if isinstance(data, dict) else None
+        return mapping if isinstance(mapping, dict) else {}
+    except Exception:
+        return {}
 
 
 def move_selected_files(
@@ -1083,8 +1167,25 @@ class QbitClient:
             raise ValueError("Torrent is not complete")
         if not selected_paths:
             raise ValueError("No files or folders selected")
+        effective_rename_plan = dict(rename_plan or {}) if isinstance(rename_plan, dict) else rename_plan
+        if target_category == "series":
+            base = qbit_path_to_local(torrent.save_path or self.settings.qbit_downloads_path, self.settings)
+            series_folder, target_season = season_from_target_folder(target_folder)
+            source_files = existing_selected_source_files(base, selected_paths)
+            file_episode_map = await llm_series_file_episode_map(
+                self.settings,
+                torrent,
+                source_files,
+                series_folder,
+                target_season,
+                effective_rename_plan if isinstance(effective_rename_plan, dict) else None,
+            )
+            if file_episode_map:
+                if not isinstance(effective_rename_plan, dict):
+                    effective_rename_plan = {}
+                effective_rename_plan["file_episode_map"] = file_episode_map
         await self.stop_torrent(torrent_hash)
-        moved = move_selected_files(selected_paths, torrent, target_category, target_folder, self.settings, rename_plan=rename_plan)
+        moved = move_selected_files(selected_paths, torrent, target_category, target_folder, self.settings, rename_plan=effective_rename_plan)
         await self.delete_torrent(torrent_hash, delete_files=True)
         return moved
 

@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "BoBSearch"
-    app_version: str = "1.0.14"
+    app_version: str = "1.0.15"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     app_data_dir: str = "/app/data"

@@ -6,6 +6,17 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.15] - 2026-05-10
+
+### Changed
+
+- Series move-to-Jellyfin now asks the configured large model to assign episode numbers across the full selected file batch before renaming, so multi-file packs such as `01.mkv` and `02.mkv` can be mapped automatically without manual intervention.
+- The LLM-provided per-file mapping is now honored during the actual move step, taking precedence over the older deterministic batch override when available.
+
+### Fixed
+
+- Fixed the case where separate selected episode files from the same TV pack could still be blocked by a rename collision instead of being auto-resolved into distinct episode targets.
+
 ## [1.0.14] - 2026-05-10
 
 ### Fixed
