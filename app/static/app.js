@@ -718,10 +718,34 @@ function icon(name) {
   return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths[name] || ""}</svg>`;
 }
 
+function torrentStateFlags(torrent) {
+  const raw = String(torrent?.state || "").toLowerCase();
+  const runningPrefixes = ["downloading", "forceddl", "forcedmeta", "forcedup", "checking", "checkingresume", "moving", "queued", "allocating", "metadl", "stalled", "uploading"];
+  const stoppedPrefixes = ["paused", "stopped", "error", "missingfiles"];
+  const canStart = stoppedPrefixes.some((prefix) => raw.startsWith(prefix));
+  const canStop = runningPrefixes.some((prefix) => raw.startsWith(prefix));
+  return { raw, canStart, canStop };
+}
+
+function torrentActionMeta(torrent) {
+  const flags = torrentStateFlags(torrent);
+  return {
+    start: {
+      disabled: !flags.canStart,
+      title: flags.canStart ? "开始" : "任务已在运行或不可开始",
+    },
+    stop: {
+      disabled: !flags.canStop,
+      title: flags.canStop ? "停止" : "任务已停止或当前不可停止",
+    },
+  };
+}
+
 function torrentCard(torrent) {
   const complete = Boolean(torrent.is_complete);
   const progress = Math.round((torrent.progress || 0) * 1000) / 10;
   const moving = state.movingHash === torrent.hash;
+  const actionMeta = torrentActionMeta(torrent);
   return `
     <article class="torrent-card ${moving ? "moving" : ""}" data-hash="${escapeAttr(torrent.hash)}">
       <div class="torrent-head">
@@ -738,8 +762,8 @@ function torrentCard(torrent) {
         </div>
         <div class="torrent-actions">
           <div class="torrent-control-row">
-            <button class="ghost torrent-action icon-btn" title="开始" aria-label="开始" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'start', this)">${icon("play")}</button>
-            <button class="ghost torrent-action icon-btn" title="停止" aria-label="停止" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'stop', this)">${icon("stop")}</button>
+            <button class="ghost torrent-action icon-btn" title="${escapeAttr(actionMeta.start.title)}" aria-label="${escapeAttr(actionMeta.start.title)}" ${actionMeta.start.disabled ? "disabled" : ""} onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'start', this)">${icon("play")}</button>
+            <button class="ghost torrent-action icon-btn" title="${escapeAttr(actionMeta.stop.title)}" aria-label="${escapeAttr(actionMeta.stop.title)}" ${actionMeta.stop.disabled ? "disabled" : ""} onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'stop', this)">${icon("stop")}</button>
             <button class="ghost danger torrent-action icon-btn" title="删除任务和文件" aria-label="删除任务和文件" onclick="controlTorrent('${escapeAttr(torrent.hash)}', 'delete-with-files', this)">${icon("trash")}</button>
           </div>
           <button id="toggle-files-${escapeAttr(torrent.hash)}" class="ghost torrent-action icon-btn torrent-expand-btn" title="展开文件" aria-label="展开文件" aria-expanded="false" onclick="toggleTorrentFiles('${escapeAttr(torrent.hash)}')">${icon("chevronDown")}</button>
@@ -766,6 +790,12 @@ function torrentMoveOverlay() {
 
 async function controlTorrent(hash, action, button) {
   if (state.movingHash) return;
+  const torrent = state.torrents.find((item) => item.hash === hash);
+  const actionMeta = torrentActionMeta(torrent || {});
+  if ((action === "start" || action === "stop") && actionMeta[action]?.disabled) {
+    $("torrentStatus").textContent = actionMeta[action].title;
+    return;
+  }
   const actionText = {
     start: "开始",
     stop: "停止",
@@ -774,7 +804,6 @@ async function controlTorrent(hash, action, button) {
   const key = `${hash}:${action}`;
   if (state.torrentActions.has(key)) return;
   if (action === "delete-with-files") {
-    const torrent = state.torrents.find((item) => item.hash === hash);
     const ok = confirm(`将从下载工具删除任务，并连同已下载文件一起删除：\n${torrent?.name || hash}\n\n这个操作不能撤销。继续吗？`);
     if (!ok) return;
   }

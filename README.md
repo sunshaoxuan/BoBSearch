@@ -1,6 +1,6 @@
 # BoBSearch
 
-Current release: **1.0.15**
+Current release: **1.0.16**
 
 BoBSearch is a self-hosted media search and download management console. It searches Jackett indexers, deduplicates results, uses an OpenAI-compatible LLM to summarize releases, adds selected resources to qBittorrent, and moves completed downloads into a Jellyfin library.
 

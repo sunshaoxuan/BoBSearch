@@ -6,6 +6,14 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.16] - 2026-05-11
+
+### Changed
+
+- Download-management start and stop buttons are now state-aware in the UI.
+- Tasks that are already running can no longer trigger another start action from the current page state.
+- Tasks that are already paused, stopped, or otherwise non-runnable can no longer trigger another stop action from the current page state.
+
 ## [1.0.15] - 2026-05-10
 
 ### Changed
