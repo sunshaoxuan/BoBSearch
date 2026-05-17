@@ -6,6 +6,13 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.19] - 2026-05-17
+
+### Fixed
+
+- File progress display no longer rounds incomplete qB files up to `100%`.
+- Move-and-clean now remains strict: selected files must be truly complete before they can be moved, while near-complete files display as `99.x%`.
+
 ## [1.0.18] - 2026-05-17
 
 ### Fixed

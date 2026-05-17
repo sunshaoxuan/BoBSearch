@@ -1,6 +1,6 @@
 const PAGE_SIZE = 50;
 const DOWNLOAD_REFRESH_MS = 15000;
-const FILE_COMPLETE_THRESHOLD = 0.999;
+const FILE_COMPLETE_THRESHOLD = 1.0;
 const ACTIVE_TAB_STORAGE_KEY = "bobsearch:activeTab:v1";
 const state = {
   query: "",
@@ -44,6 +44,12 @@ const fmtSize = (n) => {
   }
   return `${value.toFixed(index ? 1 : 0)} ${units[index]}`;
 };
+
+function fmtProgress(progress) {
+  const value = Number(progress || 0);
+  if (value >= 1) return "100%";
+  return `${Math.floor(Math.max(0, value) * 1000) / 10}%`;
+}
 
 async function postJson(url, data, options = {}) {
   const res = await fetch(url, {
@@ -1041,7 +1047,7 @@ function fileNode(hash, node, depth) {
         <input type="checkbox" ${selected ? "checked" : ""} onchange="toggleSelectedFile('${escapeAttr(hash)}', '${escapeAttr(node.path)}', this.checked)">
         <span class="file-name">${collapsibleText(`${node.type === "directory" ? "目录 " : "文件 "}${node.name}`, "file-text")}</span>
         <span>${fmtSize(node.size)}</span>
-        <span>${Math.round((node.progress || 0) * 100)}%</span>
+        <span>${fmtProgress(node.progress)}</span>
       </label>
     </div>
     ${children}

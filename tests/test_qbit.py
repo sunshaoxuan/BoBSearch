@@ -794,12 +794,12 @@ def test_selected_paths_all_complete_accepts_complete_selected_file_only():
     assert selected_paths_all_complete(file_items, ["done.mp4"]) is True
 
 
-def test_selected_paths_all_complete_accepts_display_rounded_complete_file():
+def test_selected_paths_all_complete_rejects_display_rounded_incomplete_file():
     file_items = [
         {"name": "done.mp4", "progress": 0.999},
         {"name": "other.doc", "progress": 0.0},
     ]
-    assert selected_paths_all_complete(file_items, ["done.mp4"]) is True
+    assert selected_paths_all_complete(file_items, ["done.mp4"]) is False
 
 
 def test_selected_paths_all_complete_rejects_incomplete_selected_directory():

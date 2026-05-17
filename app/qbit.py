@@ -23,7 +23,7 @@ TMDB_CANDIDATE_LIMIT = 6
 MIN_EXISTING_TARGET_SCORE = 0.35
 VIDEO_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".webm"}
 SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".vtt", ".sub", ".sup"}
-FILE_COMPLETE_THRESHOLD = 0.999
+FILE_COMPLETE_THRESHOLD = 1.0
 
 
 class TorrentAlreadyExistsError(RuntimeError):
