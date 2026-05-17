@@ -758,6 +758,27 @@ def existing_selected_source_files(base: Path, selected_paths: list[str]) -> lis
     return files
 
 
+def selected_paths_all_complete(file_items: list[dict[str, Any]], selected_paths: list[str]) -> bool:
+    compressed = compress_selected_paths(selected_paths)
+    normalized_items = []
+    for item in file_items:
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        try:
+            rel = safe_relative_path(name)
+        except ValueError:
+            continue
+        normalized_items.append((rel, float(item.get("progress") or 0)))
+    for selected in compressed:
+        matched = [progress for rel, progress in normalized_items if rel == selected or rel.is_relative_to(selected)]
+        if not matched:
+            return False
+        if any(progress < 1 for progress in matched):
+            return False
+    return True
+
+
 def is_video(path: Path) -> bool:
     return path.suffix.casefold() in VIDEO_EXTENSIONS
 
@@ -1163,10 +1184,11 @@ class QbitClient:
         rename_plan: dict[str, Any] | None = None,
     ) -> list[dict[str, str]]:
         torrent = await self.torrent(torrent_hash)
-        if not torrent.is_complete:
-            raise ValueError("Torrent is not complete")
         if not selected_paths:
             raise ValueError("No files or folders selected")
+        file_items = await self.files(torrent_hash)
+        if not selected_paths_all_complete(file_items, selected_paths):
+            raise ValueError("勾选项尚未全部下载完成")
         effective_rename_plan = dict(rename_plan or {}) if isinstance(rename_plan, dict) else rename_plan
         if target_category == "series":
             base = qbit_path_to_local(torrent.save_path or self.settings.qbit_downloads_path, self.settings)

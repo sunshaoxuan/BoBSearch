@@ -25,6 +25,7 @@ from app.qbit import (
     release_search_text,
     refresh_targets_existing,
     result_info_hash,
+    selected_paths_all_complete,
     series_rename_base,
     safe_relative_path,
     target_score,
@@ -423,6 +424,9 @@ def test_move_series_without_episode_fails_before_delete(monkeypatch, tmp_path):
         async def fake_torrent(_hash):
             return torrent()
 
+        async def fake_files(_hash):
+            return [{"name": "Movie.mkv", "progress": 1.0}]
+
         async def fake_stop(_hash):
             return None
 
@@ -431,6 +435,7 @@ def test_move_series_without_episode_fails_before_delete(monkeypatch, tmp_path):
             deleted = True
 
         monkeypatch.setattr(client, "torrent", fake_torrent)
+        monkeypatch.setattr(client, "files", fake_files)
         monkeypatch.setattr(client, "stop_torrent", fake_stop)
         monkeypatch.setattr(client, "delete_torrent", fake_delete)
 
@@ -450,6 +455,9 @@ def test_move_failure_does_not_delete(monkeypatch, tmp_path):
         async def fake_torrent(_hash):
             return torrent()
 
+        async def fake_files(_hash):
+            return [{"name": "missing.mkv", "progress": 1.0}]
+
         async def fake_stop(_hash):
             return None
 
@@ -458,6 +466,7 @@ def test_move_failure_does_not_delete(monkeypatch, tmp_path):
             deleted = True
 
         monkeypatch.setattr(client, "torrent", fake_torrent)
+        monkeypatch.setattr(client, "files", fake_files)
         monkeypatch.setattr(client, "stop_torrent", fake_stop)
         monkeypatch.setattr(client, "delete_torrent", fake_delete)
 
@@ -481,6 +490,9 @@ def test_move_success_deletes_with_files(monkeypatch, tmp_path):
         async def fake_torrent(_hash):
             return torrent()
 
+        async def fake_files(_hash):
+            return [{"name": "Movie.mkv", "progress": 1.0}]
+
         async def fake_stop(_hash):
             return None
 
@@ -489,6 +501,7 @@ def test_move_success_deletes_with_files(monkeypatch, tmp_path):
             delete_args = (_hash, delete_files)
 
         monkeypatch.setattr(client, "torrent", fake_torrent)
+        monkeypatch.setattr(client, "files", fake_files)
         monkeypatch.setattr(client, "stop_torrent", fake_stop)
         monkeypatch.setattr(client, "delete_torrent", fake_delete)
 
@@ -511,6 +524,9 @@ def test_move_missing_source_but_existing_destination_deletes_with_files(monkeyp
         async def fake_torrent(_hash):
             return torrent()
 
+        async def fake_files(_hash):
+            return [{"name": "Pack/Disc/Movie.mkv", "progress": 1.0}]
+
         async def fake_stop(_hash):
             return None
 
@@ -519,6 +535,7 @@ def test_move_missing_source_but_existing_destination_deletes_with_files(monkeyp
             delete_args = (_hash, delete_files)
 
         monkeypatch.setattr(client, "torrent", fake_torrent)
+        monkeypatch.setattr(client, "files", fake_files)
         monkeypatch.setattr(client, "stop_torrent", fake_stop)
         monkeypatch.setattr(client, "delete_torrent", fake_delete)
 
@@ -705,6 +722,9 @@ def test_move_success_allows_non_staging_category(monkeypatch, tmp_path):
                 is_complete=True,
             )
 
+        async def fake_files(_hash):
+            return [{"name": "Movie.mkv", "progress": 1.0}]
+
         async def fake_stop(_hash):
             return None
 
@@ -713,6 +733,7 @@ def test_move_success_allows_non_staging_category(monkeypatch, tmp_path):
             delete_args = (_hash, delete_files)
 
         monkeypatch.setattr(client, "torrent", fake_torrent)
+        monkeypatch.setattr(client, "files", fake_files)
         monkeypatch.setattr(client, "stop_torrent", fake_stop)
         monkeypatch.setattr(client, "delete_torrent", fake_delete)
 
@@ -742,6 +763,9 @@ def test_move_success_supports_downloads_mount_path(monkeypatch, tmp_path):
                 is_complete=True,
             )
 
+        async def fake_files(_hash):
+            return [{"name": "Movie.mkv", "progress": 1.0}]
+
         async def fake_stop(_hash):
             return None
 
@@ -750,12 +774,74 @@ def test_move_success_supports_downloads_mount_path(monkeypatch, tmp_path):
             delete_args = (_hash, delete_files)
 
         monkeypatch.setattr(client, "torrent", fake_torrent)
+        monkeypatch.setattr(client, "files", fake_files)
         monkeypatch.setattr(client, "stop_torrent", fake_stop)
         monkeypatch.setattr(client, "delete_torrent", fake_delete)
 
         await client.move_selected("ghi", ["Movie.mkv"], "movies", "Movie (2026)")
         assert delete_args == ("ghi", True)
         assert (tmp_path / "jellyfin" / "movies" / "Movie (2026)" / "Movie.mkv").exists()
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_selected_paths_all_complete_accepts_complete_selected_file_only():
+    file_items = [
+        {"name": "done.mp4", "progress": 1.0},
+        {"name": "other.doc", "progress": 0.0},
+    ]
+    assert selected_paths_all_complete(file_items, ["done.mp4"]) is True
+
+
+def test_selected_paths_all_complete_rejects_incomplete_selected_directory():
+    file_items = [
+        {"name": "Pack/done.mp4", "progress": 1.0},
+        {"name": "Pack/other.doc", "progress": 0.5},
+    ]
+    assert selected_paths_all_complete(file_items, ["Pack"]) is False
+
+
+def test_move_selected_allows_partial_torrent_when_selected_file_complete(monkeypatch, tmp_path):
+    async def run():
+        cfg = settings(tmp_path)
+        source = tmp_path / "config-downloads" / "movies-staging" / "done.mp4"
+        source.parent.mkdir(parents=True)
+        source.write_text("movie")
+        client = QbitClient(cfg)
+        delete_args = None
+
+        async def fake_torrent(_hash):
+            return QbitTorrent(
+                hash="partial",
+                name="Partial torrent",
+                progress=0.5,
+                save_path="/app/qBittorrent/downloads/movies-staging",
+                category="movies-staging",
+                is_complete=False,
+            )
+
+        async def fake_files(_hash):
+            return [
+                {"name": "done.mp4", "progress": 1.0},
+                {"name": "other.doc", "progress": 0.0},
+            ]
+
+        async def fake_stop(_hash):
+            return None
+
+        async def fake_delete(_hash, delete_files):
+            nonlocal delete_args
+            delete_args = (_hash, delete_files)
+
+        monkeypatch.setattr(client, "torrent", fake_torrent)
+        monkeypatch.setattr(client, "files", fake_files)
+        monkeypatch.setattr(client, "stop_torrent", fake_stop)
+        monkeypatch.setattr(client, "delete_torrent", fake_delete)
+
+        moved = await client.move_selected("partial", ["done.mp4"], "movies", "Movie (2026)")
+        assert moved[0]["destination"].endswith("done.mp4")
+        assert delete_args == ("partial", True)
         await client.close()
 
     asyncio.run(run())

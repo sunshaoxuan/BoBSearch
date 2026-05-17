@@ -6,6 +6,14 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.17] - 2026-05-17
+
+### Changed
+
+- Download management no longer requires the whole torrent task to be complete before moving to Jellyfin.
+- The move button now becomes available as soon as the currently selected file or folder items are all at 100%.
+- Backend move validation now checks qB file progress only for the selected paths, so completed videos inside otherwise incomplete tasks can be moved and cleaned immediately.
+
 ## [1.0.16] - 2026-05-11
 
 ### Changed

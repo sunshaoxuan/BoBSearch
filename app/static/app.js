@@ -943,12 +943,10 @@ function fileLoadingPanel(title, text, steps) {
 
 function renderTorrentFiles(hash) {
   const holder = $(`files-${hash}`);
-  const torrent = state.torrents.find((item) => item.hash === hash);
   const files = state.torrentFiles[hash] || [];
   const targets = state.targetSuggestions[hash] || [];
-  const complete = Boolean(torrent && torrent.is_complete);
   const firstTarget = targets[0];
-  const canMove = complete && Boolean(firstTarget) && !firstTarget.disabled;
+  const canMove = canMoveSelected(hash, firstTarget);
   holder.innerHTML = `
     <div class="file-tools">
       <select id="targetChoice-${escapeAttr(hash)}" class="target-choice" onchange="updateTargetReason('${escapeAttr(hash)}')">
@@ -961,9 +959,38 @@ function renderTorrentFiles(hash) {
     </div>
     <p id="targetReason-${escapeAttr(hash)}" class="target-reason">${targetReasonText(targets[0])}</p>
     <p class="section-note">${targets.length ? "目标目录已按 Jellyfin 现有目录和命名规则自动生成，优先选择最高匹配项。" : "没有可用目标目录候选。"}</p>
-    ${complete ? "" : `<p class="section-note">任务尚未完成，只能查看文件，不能移动。</p>`}
+    ${selectedMoveNote(hash)}
     <div class="file-tree">${files.map((node) => fileNode(hash, node, 0)).join("") || emptyState("没有文件信息。")}</div>
   `;
+}
+
+function fileNodeMap(nodes, map = new Map()) {
+  for (const node of nodes || []) {
+    map.set(node.path, node);
+    fileNodeMap(node.children || [], map);
+  }
+  return map;
+}
+
+function selectedNodesComplete(hash) {
+  const selected = Array.from(state.selectedFiles[hash] || []);
+  if (!selected.length) return false;
+  const nodeMap = fileNodeMap(state.torrentFiles[hash] || []);
+  return selected.every((path) => {
+    const node = nodeMap.get(path);
+    return node && Number(node.progress || 0) >= 1;
+  });
+}
+
+function canMoveSelected(hash, target) {
+  return Boolean(target) && !target.disabled && selectedNodesComplete(hash);
+}
+
+function selectedMoveNote(hash) {
+  const selected = Array.from(state.selectedFiles[hash] || []);
+  if (!selected.length) return `<p class="section-note">请勾选已完成的文件或文件夹后再移动。</p>`;
+  if (!selectedNodesComplete(hash)) return `<p class="section-note">只有勾选项全部下载完成后，才能移动勾选并清理。</p>`;
+  return `<p class="section-note">勾选项已完成，可直接移动勾选并清理，不需要等待整任务全部完成。</p>`;
 }
 
 function targetOption(target) {
@@ -1000,7 +1027,7 @@ function updateTargetReason(hash) {
   const torrent = state.torrents.find((item) => item.hash === hash);
   const moveBtn = $(`moveBtn-${hash}`);
   if (moveBtn) {
-    moveBtn.disabled = !torrent?.is_complete || !target || Boolean(target.disabled);
+    moveBtn.disabled = !canMoveSelected(hash, target);
   }
 }
 
@@ -1024,6 +1051,7 @@ function toggleSelectedFile(hash, path, checked) {
   state.selectedFiles[hash] = state.selectedFiles[hash] || new Set();
   if (checked) state.selectedFiles[hash].add(path);
   else state.selectedFiles[hash].delete(path);
+  renderTorrentFiles(hash);
 }
 
 function allFilePaths(nodes) {
@@ -1072,6 +1100,10 @@ async function moveSelected(hash) {
   }
   if (!targetCategory || !targetFolder) {
     $("torrentStatus").textContent = "没有可用的 Jellyfin 目标目录候选。";
+    return;
+  }
+  if (!selectedNodesComplete(hash)) {
+    $("torrentStatus").textContent = "只有勾选项全部下载完成后，才能移动勾选并清理。";
     return;
   }
   if (target?.disabled) {
