@@ -6,6 +6,12 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.20] - 2026-05-17
+
+### Fixed
+
+- Torrent-level progress now uses the same no-round-up display rule as file-level progress, so near-complete tasks do not appear more complete than qB reports.
+
 ## [1.0.19] - 2026-05-17
 
 ### Fixed

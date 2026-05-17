@@ -750,7 +750,9 @@ function torrentActionMeta(torrent) {
 
 function torrentCard(torrent) {
   const complete = Boolean(torrent.is_complete);
-  const progress = Math.round((torrent.progress || 0) * 1000) / 10;
+  const progressValue = Number(torrent.progress || 0);
+  const progressPercent = Math.min(100, Math.max(0, progressValue * 100));
+  const progressText = fmtProgress(progressValue);
   const moving = state.movingHash === torrent.hash;
   const actionMeta = torrentActionMeta(torrent);
   return `
@@ -759,7 +761,7 @@ function torrentCard(torrent) {
         <div class="torrent-main">
           <h3>${collapsibleText(torrent.name, "torrent-title")}</h3>
           <div class="meta">
-            <span class="pill ${complete ? "strong" : ""}">${complete ? "已完成" : "下载中"} ${progress}%</span>
+            <span class="pill ${complete ? "strong" : ""}">${complete ? "已完成" : "下载中"} ${progressText}</span>
             <span>${fmtSize(torrent.completed)} / ${fmtSize(torrent.size)}</span>
             <span>${escapeHtml(torrent.state || "unknown")}</span>
             <span>${escapeHtml(torrent.category || "未分类")}</span>
@@ -776,7 +778,7 @@ function torrentCard(torrent) {
           <button id="toggle-files-${escapeAttr(torrent.hash)}" class="ghost torrent-action icon-btn torrent-expand-btn" title="展开文件" aria-label="展开文件" aria-expanded="false" onclick="toggleTorrentFiles('${escapeAttr(torrent.hash)}')">${icon("chevronDown")}</button>
         </div>
       </div>
-      <div class="progress"><span style="width:${Math.min(100, Math.max(0, progress))}%"></span></div>
+      <div class="progress"><span style="width:${progressPercent}%"></span></div>
       <div id="files-${escapeAttr(torrent.hash)}" class="torrent-files"></div>
       ${moving ? torrentMoveOverlay() : ""}
     </article>
