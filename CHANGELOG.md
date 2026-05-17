@@ -6,6 +6,13 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.18] - 2026-05-17
+
+### Fixed
+
+- File-completion checks now use the same effective threshold as the UI display, so qB file progress values like `0.999` that display as `100%` are accepted for move-and-clean.
+- The partial-torrent move validation now treats selected files consistently between the frontend button state and the backend qB file-progress check.
+
 ## [1.0.17] - 2026-05-17
 
 ### Changed

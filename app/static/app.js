@@ -1,5 +1,6 @@
 const PAGE_SIZE = 50;
 const DOWNLOAD_REFRESH_MS = 15000;
+const FILE_COMPLETE_THRESHOLD = 0.999;
 const ACTIVE_TAB_STORAGE_KEY = "bobsearch:activeTab:v1";
 const state = {
   query: "",
@@ -978,7 +979,7 @@ function selectedNodesComplete(hash) {
   const nodeMap = fileNodeMap(state.torrentFiles[hash] || []);
   return selected.every((path) => {
     const node = nodeMap.get(path);
-    return node && Number(node.progress || 0) >= 1;
+    return node && Number(node.progress || 0) >= FILE_COMPLETE_THRESHOLD;
   });
 }
 

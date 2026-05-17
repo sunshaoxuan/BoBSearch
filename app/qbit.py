@@ -23,6 +23,7 @@ TMDB_CANDIDATE_LIMIT = 6
 MIN_EXISTING_TARGET_SCORE = 0.35
 VIDEO_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".webm"}
 SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".vtt", ".sub", ".sup"}
+FILE_COMPLETE_THRESHOLD = 0.999
 
 
 class TorrentAlreadyExistsError(RuntimeError):
@@ -774,7 +775,7 @@ def selected_paths_all_complete(file_items: list[dict[str, Any]], selected_paths
         matched = [progress for rel, progress in normalized_items if rel == selected or rel.is_relative_to(selected)]
         if not matched:
             return False
-        if any(progress < 1 for progress in matched):
+        if any(progress < FILE_COMPLETE_THRESHOLD for progress in matched):
             return False
     return True
 
