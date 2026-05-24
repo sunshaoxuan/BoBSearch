@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "BoBSearch"
-    app_version: str = "1.0.20"
+    app_version: str = "1.0.21"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     app_data_dir: str = "/app/data"
@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     qbit_extra_downloads_path: str = "/downloads"
     qbit_extra_local_downloads_path: str = "/downloads"
     jellyfin_library_path: str = "/jellyfin/library"
+    software_library_path: str = "/software"
 
     llm_base_url: str
     llm_api_key: str

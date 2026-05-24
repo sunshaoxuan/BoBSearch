@@ -17,12 +17,14 @@ from .models import QbitFileNode, QbitTorrent, SearchResult
 
 
 ALLOWED_JELLYFIN_CATEGORIES = {"movies", "series", "other"}
+ALLOWED_TARGET_CATEGORIES = {*ALLOWED_JELLYFIN_CATEGORIES, "software"}
 TARGET_CATEGORY_ORDER = ("movies", "series", "other")
 NAMING_EXAMPLE_LIMIT = 80
 TMDB_CANDIDATE_LIMIT = 6
 MIN_EXISTING_TARGET_SCORE = 0.35
 VIDEO_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".webm"}
 SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".vtt", ".sub", ".sup"}
+SOFTWARE_EXTENSIONS = {".dmg", ".pkg", ".exe", ".msi", ".app", ".deb", ".rpm", ".apk", ".ipa"}
 FILE_COMPLETE_THRESHOLD = 1.0
 
 
@@ -100,7 +102,7 @@ def target_with_defaults(target: dict[str, Any]) -> dict[str, Any]:
     target["category"] = category
     target["folder"] = folder
     target["target_folder"] = folder
-    target.setdefault("media_type", "series" if category == "series" else "movie" if category == "movies" else "other")
+    target.setdefault("media_type", "series" if category == "series" else "movie" if category == "movies" else "software" if category == "software" else "other")
     return target
 
 
@@ -157,6 +159,36 @@ def series_target(
         "existing": existing,
         "disabled": False,
     }
+
+
+def software_target(query: str, settings: Settings, score: float = 0.78, reason: str = "识别为软件类下载，保存到软件目录") -> dict[str, Any]:
+    folder = generated_folder_name(query)
+    return refresh_target_existing(
+        target_with_defaults(
+            {
+                "category": "software",
+                "folder": folder,
+                "target_folder": folder,
+                "media_type": "software",
+                "score": score,
+                "reason": reason,
+                "existing": False,
+                "disabled": False,
+            }
+        ),
+        settings,
+    )
+
+
+def looks_like_software_download(query: str, file_names: list[str] | None = None) -> bool:
+    values = [query, *(file_names or [])]
+    text = " ".join(str(item or "") for item in values).lower()
+    if any(Path(item).suffix.lower() in SOFTWARE_EXTENSIONS for item in values):
+        return True
+    software_words = ("macos", "windows", "installer", "setup", "crack", "serial", "license", "注册机", "激活", "安装包", "软件")
+    has_software_word = any(word in text for word in software_words)
+    has_media_word = any(word in text for word in ("1080p", "2160p", "720p", "web-dl", "bluray", "s01", "e01", ".mkv", ".mp4"))
+    return has_software_word and not has_media_word
 
 
 def ensure_inside(path: Path, root: Path) -> Path:
@@ -348,7 +380,24 @@ def folder_name_from_llm_target(target: dict[str, Any]) -> dict[str, Any] | None
     tmdb_id = str(target.get("tmdb_id") or target.get("tmdbid") or "").strip()
     folder = str(target.get("folder") or "").strip()
     reason = str(target.get("reason") or "LLM 根据 TMDb 信息生成").strip()
-    if category not in ALLOWED_JELLYFIN_CATEGORIES or not title:
+    if category not in ALLOWED_TARGET_CATEGORIES:
+        return None
+    if category == "software":
+        folder = folder or title
+        if not folder:
+            return None
+        try:
+            safe_target_folder(folder)
+        except ValueError:
+            return None
+        return target_with_defaults({
+            "category": "software",
+            "folder": folder,
+            "score": float(target.get("score") or 0.82),
+            "reason": reason[:120],
+            "existing": False,
+        })
+    if not title:
         return None
     if category == "series":
         season_number = int(target.get("season_number") or 0)
@@ -503,13 +552,13 @@ async def llm_generated_target_suggestion(query: str, settings: Settings, file_n
     tmdb_query = " ".join([query, *file_context[:8]])
     tmdb_candidates = await tmdb_web_candidates(tmdb_query)
     prompt = {
-        "task": "Identify the media in a qBittorrent download task and generate one Jellyfin folder target.",
+        "task": "Identify a qBittorrent download task and generate one destination target.",
         "release_name": query,
         "download_file_names": file_context,
         "cleaned_search_text": release_search_text(query),
         "tmdb_candidates_from_web_search": tmdb_candidates,
         "existing_folder_style_examples": naming_examples(settings),
-        "required_folder_format": "movies: Title (YYYY) [tmdbid-NUMBER]; series: Series Title/Season NN",
+        "required_folder_format": "movies: Title (YYYY) [tmdbid-NUMBER]; series: Series Title/Season NN; software: clean software package folder name",
         "rules": [
             "Use both release_name and download_file_names. File names are decisive when they reveal the actual media.",
             "Find the actual movie/series title; ignore release groups, websites, codecs, quality, audio, subtitles and container text.",
@@ -521,12 +570,13 @@ async def llm_generated_target_suggestion(query: str, settings: Settings, file_n
             "For series, return category=series, title/series_folder without year or TMDb ID, season_number and episode_numbers. The final Jellyfin path is series_folder/Season NN.",
             "Do not classify as a movie only because TMDb candidates include a movie; reconcile candidates against the file names first.",
             "Do not return a folder based on release group names or website names.",
+            "If this is software, installer, app package, crack, serial, license package, or other non-movie/non-series download, return category=software and a clean software folder name. Do not use TMDb for software.",
             "If the TMDb item cannot be identified confidently, return {\"target\": null}.",
             "Return strict JSON only.",
         ],
         "schema": {
             "target": {
-                "category": "movies|series|other",
+                "category": "movies|series|software|other",
                 "title": "folder title without year/id",
                 "year": "YYYY",
                 "tmdb_id": "digits only",
@@ -702,6 +752,8 @@ async def jellyfin_target_suggestions_with_llm(
     llm_target = await llm_generated_target_suggestion(query, settings, file_names=file_names)
     if llm_target and not any(item["category"] == llm_target["category"] and item["folder"] == llm_target["folder"] for item in suggestions):
         suggestions.append(llm_target)
+    if not suggestions and looks_like_software_download(query, file_names):
+        suggestions.append(software_target(query, settings))
     return refresh_targets_existing(suggestions, settings)[:limit]
 
 
@@ -720,9 +772,12 @@ def qbit_path_to_local(path: str, settings: Settings) -> Path:
 
 
 def jellyfin_target_path(category: str, folder: str, settings: Settings) -> Path:
-    if category not in ALLOWED_JELLYFIN_CATEGORIES:
-        raise ValueError("Unsupported Jellyfin category")
+    if category not in ALLOWED_TARGET_CATEGORIES:
+        raise ValueError("Unsupported target category")
     rel = safe_target_folder(folder)
+    if category == "software":
+        root = Path(settings.software_library_path)
+        return ensure_inside(root.joinpath(*rel.parts), root)
     root = Path(settings.jellyfin_library_path) / category
     return ensure_inside(root.joinpath(*rel.parts), Path(settings.jellyfin_library_path))
 

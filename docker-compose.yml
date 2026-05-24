@@ -14,6 +14,7 @@ services:
       - ${QBIT_DOWNLOADS_HOST_PATH:-./downloads}:${QBIT_LOCAL_DOWNLOADS_PATH:-/downloads}
       - ${QBIT_EXTRA_DOWNLOADS_HOST_PATH:-./downloads-extra}:${QBIT_EXTRA_LOCAL_DOWNLOADS_PATH:-/downloads-extra}
       - ${JELLYFIN_LIBRARY_HOST_PATH:-./library}:${JELLYFIN_LIBRARY_PATH:-/jellyfin/library}
+      - ${SOFTWARE_LIBRARY_HOST_PATH:-./software}:${SOFTWARE_LIBRARY_PATH:-/software}
 
   jackett:
     profiles: ["bundled"]

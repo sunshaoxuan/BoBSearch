@@ -6,6 +6,12 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.21] - 2026-05-24
+
+### Added
+
+- Added a `software` destination category for non-movie/non-series downloads, mapped outside Jellyfin to the configured software library path.
+
 ## [1.0.20] - 2026-05-17
 
 ### Fixed

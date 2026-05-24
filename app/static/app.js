@@ -889,7 +889,7 @@ async function toggleTorrentFiles(hash) {
 }
 
 function targetCacheKey(hash) {
-  return `bobsearch:targetSuggestions:v3:${hash}`;
+  return `bobsearch:targetSuggestions:v4:${hash}`;
 }
 
 function readTargetSuggestionsCache(hash) {
@@ -912,7 +912,7 @@ function writeTargetSuggestionsCache(hash, targets) {
 
 async function ensureTargetSuggestions(hash, holder, force = false) {
   if (!force && state.targetSuggestions[hash]) return;
-  holder.innerHTML = fileLoadingPanel("正在计算 Jellyfin 目标目录", "读取任务名和文件列表，交给大模型判断电影/电视剧并生成目录。", ["整理文件名", "查询 TMDb", "大模型命名"]);
+  holder.innerHTML = fileLoadingPanel("正在计算目标目录", "读取任务名和文件列表，交给大模型判断电影、电视剧或软件并生成目录。", ["整理文件名", "查询资料", "大模型命名"]);
   const torrent = state.torrents.find((item) => item.hash === hash);
   const data = await postJson("/api/jellyfin/targets", {
     query: torrent?.name || "",
@@ -967,7 +967,7 @@ function renderTorrentFiles(hash) {
       <button id="moveBtn-${escapeAttr(hash)}" ${canMove ? "" : "disabled"} onclick="moveSelected('${escapeAttr(hash)}')">移动勾选并清理</button>
     </div>
     <p id="targetReason-${escapeAttr(hash)}" class="target-reason">${targetReasonText(targets[0])}</p>
-    <p class="section-note">${targets.length ? "目标目录已按 Jellyfin 现有目录和命名规则自动生成，优先选择最高匹配项。" : "没有可用目标目录候选。"}</p>
+    <p class="section-note">${targets.length ? "目标目录已按现有目录和命名规则自动生成，优先选择最高匹配项。" : "没有可用目标目录候选。"}</p>
     ${selectedMoveNote(hash)}
     <div class="file-tree">${files.map((node) => fileNode(hash, node, 0)).join("") || emptyState("没有文件信息。")}</div>
   `;
@@ -1025,6 +1025,14 @@ function targetReasonText(target) {
   const rename = target.rename_plan?.preview ? `；重命名预览：${target.rename_plan.preview}` : "";
   const disabled = target.disabled ? "；无法识别季集号，不能自动移动" : "";
   return `匹配说明${reason}${episode}${rename}${disabled}`;
+}
+
+function targetRootLabel(category) {
+  return category === "software" ? "软件目录" : "Jellyfin";
+}
+
+function targetDisplayPath(category, folder) {
+  return category === "software" ? `${targetRootLabel(category)}/${folder}` : `${targetRootLabel(category)}/${category}/${folder}`;
 }
 
 function updateTargetReason(hash) {
@@ -1108,7 +1116,7 @@ async function moveSelected(hash) {
     return;
   }
   if (!targetCategory || !targetFolder) {
-    $("torrentStatus").textContent = "没有可用的 Jellyfin 目标目录候选。";
+    $("torrentStatus").textContent = "没有可用的目标目录候选。";
     return;
   }
   if (!selectedNodesComplete(hash)) {
@@ -1119,7 +1127,7 @@ async function moveSelected(hash) {
     $("torrentStatus").textContent = "当前电视剧目标无法识别季集号，不能自动移动。";
     return;
   }
-  const ok = confirm(`将移动 ${selected.length} 个勾选项到 Jellyfin/${targetCategory}/${targetFolder}。全部成功后会删除下载任务，并删除未勾选的剩余文件。继续吗？`);
+  const ok = confirm(`将移动 ${selected.length} 个勾选项到 ${targetDisplayPath(targetCategory, targetFolder)}。全部成功后会删除下载任务，并删除未勾选的剩余文件。继续吗？`);
   if (!ok) return;
   setMoveBusy(hash, true);
   try {

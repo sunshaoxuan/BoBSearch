@@ -47,6 +47,7 @@ def settings(tmp_path):
         qbit_extra_downloads_path="/downloads",
         qbit_extra_local_downloads_path=str(tmp_path / "downloads"),
         jellyfin_library_path=str(tmp_path / "jellyfin"),
+        software_library_path=str(tmp_path / "software"),
     )
 
 
@@ -85,6 +86,14 @@ def test_qbit_and_jellyfin_paths_stay_inside_roots(tmp_path):
         jellyfin_target_path("movies", "../bad", cfg)
     with pytest.raises(ValueError):
         jellyfin_target_path("series", "权力的游戏/../Season 01", cfg)
+
+
+def test_software_target_path_stays_inside_software_root(tmp_path):
+    cfg = settings(tmp_path)
+    target = jellyfin_target_path("software", "Adobe Photoshop", cfg)
+    assert target == (tmp_path / "software" / "Adobe Photoshop").resolve()
+    with pytest.raises(ValueError):
+        jellyfin_target_path("software", "../bad", cfg)
 
 
 def test_file_tree_groups_directories():
@@ -197,6 +206,17 @@ def test_move_selected_folder_keeps_selected_folder_downward(tmp_path):
     source.write_text("movie")
     move_selected_files(["Pack/Disc"], torrent(), "movies", "Movie (2026)", cfg)
     assert (tmp_path / "jellyfin" / "movies" / "Movie (2026)" / "Disc" / "Movie.mkv").read_text() == "movie"
+
+
+def test_move_software_file_goes_to_software_root(tmp_path):
+    cfg = settings(tmp_path)
+    source = tmp_path / "config-downloads" / "movies-staging" / "Pack" / "Setup.dmg"
+    source.parent.mkdir(parents=True)
+    source.write_text("installer")
+    moved = move_selected_files(["Pack/Setup.dmg"], torrent(), "software", "Adobe Photoshop", cfg)
+    target = tmp_path / "software" / "Adobe Photoshop" / "Setup.dmg"
+    assert target.read_text() == "installer"
+    assert moved[0]["destination"] == str(target.resolve())
 
 
 def test_parse_episode_info_common_formats():
@@ -1020,6 +1040,21 @@ def test_llm_series_target_does_not_require_tmdb_id():
     assert target
     assert target["folder"] == "Light to the Night/Season 01"
     assert target["rename_plan"]["preview"] == "Light to the Night - S01E03"
+
+
+def test_llm_software_target_accepts_folder_without_tmdb_id():
+    target = folder_name_from_llm_target(
+        {
+            "category": "software",
+            "folder": "Adobe Photoshop 2026",
+            "score": 0.91,
+            "reason": "软件安装包",
+        }
+    )
+    assert target
+    assert target["category"] == "software"
+    assert target["target_folder"] == "Adobe Photoshop 2026"
+    assert target["media_type"] == "software"
 
 
 def test_tmdb_candidate_helpers_extract_clean_title():
