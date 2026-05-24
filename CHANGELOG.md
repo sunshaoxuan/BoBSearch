@@ -6,6 +6,12 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.22] - 2026-05-24
+
+### Fixed
+
+- Software moves now merge a selected top-level folder into the generated target when both names match, avoiding duplicated paths such as `Autodesk AutoCAD 2027/Autodesk AutoCAD 2027`.
+
 ## [1.0.21] - 2026-05-24
 
 ### Added

@@ -263,6 +263,20 @@ def replace_file(source: Path, destination: Path) -> None:
         raise
 
 
+def move_directory_contents(source: Path, destination: Path) -> list[dict[str, str]]:
+    if not source.is_dir():
+        raise NotADirectoryError(f"Selected path is not a directory: {source}")
+    destination.mkdir(parents=True, exist_ok=True)
+    moved: list[dict[str, str]] = []
+    for child in sorted(source.iterdir(), key=lambda path: path.name.casefold()):
+        moved.append(move_or_skip_existing(child, destination / child.name))
+    try:
+        source.rmdir()
+    except OSError:
+        pass
+    return moved
+
+
 def compress_selected_paths(paths: list[str]) -> list[PurePosixPath]:
     selected = sorted({safe_relative_path(path) for path in paths}, key=lambda p: (len(p.parts), str(p)))
     compressed: list[PurePosixPath] = []
@@ -1099,10 +1113,16 @@ def move_selected_files(
         source = ensure_inside(base.joinpath(*rel.parts), base)
         if not source.exists():
             destination = target_root / rel.name
+            if target_category == "software" and rel.name.casefold() == target_root.name.casefold() and any(target_root.iterdir()):
+                moved.append(skipped_existing_missing_source(source, target_root))
+                continue
             if destination.exists():
                 moved.append(skipped_existing_missing_source(source, destination))
                 continue
             raise FileNotFoundError(f"Selected path does not exist: {rel}")
+        if target_category == "software" and source.is_dir() and source.name.casefold() == target_root.name.casefold():
+            moved.extend(move_directory_contents(source, target_root))
+            continue
         moved.append(move_or_skip_existing(source, target_root / rel.name))
     return moved
 

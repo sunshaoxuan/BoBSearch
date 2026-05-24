@@ -219,6 +219,19 @@ def test_move_software_file_goes_to_software_root(tmp_path):
     assert moved[0]["destination"] == str(target.resolve())
 
 
+def test_move_software_same_named_top_folder_merges_contents(tmp_path):
+    cfg = settings(tmp_path)
+    source = tmp_path / "config-downloads" / "movies-staging" / "Autodesk AutoCAD 2027" / "Setup" / "setup.exe"
+    source.parent.mkdir(parents=True)
+    source.write_text("installer")
+    moved = move_selected_files(["Autodesk AutoCAD 2027"], torrent(), "software", "Autodesk AutoCAD 2027", cfg)
+    target = tmp_path / "software" / "Autodesk AutoCAD 2027" / "Setup" / "setup.exe"
+    nested = tmp_path / "software" / "Autodesk AutoCAD 2027" / "Autodesk AutoCAD 2027"
+    assert target.read_text() == "installer"
+    assert not nested.exists()
+    assert moved[0]["destination"] == str((tmp_path / "software" / "Autodesk AutoCAD 2027" / "Setup").resolve())
+
+
 def test_parse_episode_info_common_formats():
     assert parse_episode_info("Show.S01E02.1080p") == {"season_number": 1, "episode_numbers": [2]}
     assert parse_episode_info("Show S1E2") == {"season_number": 1, "episode_numbers": [2]}
