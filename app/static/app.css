@@ -974,6 +974,51 @@ button.ghost.danger {
   overflow-wrap: anywhere;
 }
 
+.manual-add-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  margin: 14px 0;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.manual-add-panel textarea {
+  width: 100%;
+  min-height: 78px;
+  resize: vertical;
+  font: inherit;
+}
+
+.manual-add-actions {
+  display: grid;
+  grid-template-columns: 140px minmax(160px, 1fr) 140px;
+  gap: 10px;
+  align-items: center;
+}
+
+.file-picker {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(37, 99, 235, 0.36);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--accent);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.file-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .file-tree {
   display: grid;
   gap: 4px;
@@ -1348,6 +1393,14 @@ button.ghost.danger {
 
   .target-reason {
     font-size: 11px;
+  }
+
+  .manual-add-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .manual-add-panel {
+    padding: 10px;
   }
 }
 

@@ -731,6 +731,52 @@ def test_add_result_treats_qbit_fails_as_duplicate_after_recheck(monkeypatch, tm
     asyncio.run(run())
 
 
+def test_add_magnet_rejects_non_magnet(tmp_path):
+    async def run():
+        client = QbitClient(settings(tmp_path))
+        with pytest.raises(ValueError, match="magnet"):
+            await client.add_magnet("https://example.com/file.torrent")
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_add_torrent_file_posts_multipart(monkeypatch, tmp_path):
+    async def run():
+        client = QbitClient(settings(tmp_path))
+        calls = []
+
+        async def fake_ensure_category():
+            return None
+
+        async def fake_post(endpoint, data=None, files=None):
+            calls.append((endpoint, data, files))
+            return mock_response(text="Ok.")
+
+        monkeypatch.setattr(client, "ensure_category", fake_ensure_category)
+        monkeypatch.setattr(client.client, "post", fake_post)
+
+        await client.add_torrent_file("linux.torrent", b"d4:infode")
+        assert calls[0][0] == "/api/v2/torrents/add"
+        assert calls[0][1]["category"] == "movies-staging"
+        assert calls[0][1]["paused"] == "false"
+        assert calls[0][2]["torrents"][0] == "linux.torrent"
+        assert calls[0][2]["torrents"][1] == b"d4:infode"
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_add_torrent_file_rejects_invalid_content(tmp_path):
+    async def run():
+        client = QbitClient(settings(tmp_path))
+        with pytest.raises(ValueError, match="格式无效"):
+            await client.add_torrent_file("linux.torrent", b"not-bencode")
+        await client.close()
+
+    asyncio.run(run())
+
+
 def test_result_info_hash_falls_back_to_magnet():
     result = SearchResult(token="t", title="Movie", magnet_uri="magnet:?xt=urn:btih:abcdef1234567890abcdef1234567890abcdef12")
     assert result_info_hash(result) == "ABCDEF1234567890ABCDEF1234567890ABCDEF12"

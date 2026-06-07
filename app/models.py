@@ -101,6 +101,10 @@ class MoveSelectedRequest(BaseModel):
     rename_plan: dict | None = None
 
 
+class AddMagnetRequest(BaseModel):
+    magnet_uri: str
+
+
 class RefreshTargetsRequest(BaseModel):
     targets: list[dict]
 

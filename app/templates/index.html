@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BoBSearch</title>
   <link rel="icon" href="/static/brand/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/app.css?v=1.0.22">
+  <link rel="stylesheet" href="/static/app.css?v=1.0.23">
 </head>
 <body>
   <div class="app-shell">
@@ -81,6 +81,18 @@
               <button id="refreshTorrentsBtn" class="ghost">刷新清单</button>
             </div>
             <p class="section-note">显示下载工具全部任务。已完成任务可勾选文件/文件夹并移动到 Jellyfin，成功后删除下载任务和剩余文件。</p>
+            <div class="manual-add-panel">
+              <textarea id="manualMagnet" rows="3" placeholder="粘贴 magnet 链接，手动创建下载任务"></textarea>
+              <div class="manual-add-actions">
+                <button id="addMagnetBtn" type="button">添加磁力</button>
+                <label class="file-picker">
+                  <input id="torrentFileInput" type="file" accept=".torrent,application/x-bittorrent">
+                  <span>选择种子</span>
+                </label>
+                <button id="uploadTorrentBtn" class="ghost" type="button">上传种子</button>
+              </div>
+              <div id="manualAddStatus" class="mini-status"></div>
+            </div>
             <div id="torrentStatus" class="mini-status"></div>
             <div id="torrentList" class="torrent-list"></div>
           </section>
@@ -106,6 +118,6 @@
     </main>
   </div>
 
-  <script src="/static/app.js?v=1.0.22"></script>
+  <script src="/static/app.js?v=1.0.23"></script>
 </body>
 </html>

@@ -6,6 +6,12 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.23] - 2026-06-07
+
+### Added
+
+- Added manual download creation from a pasted magnet link or uploaded `.torrent` file in Download Management.
+
 ## [1.0.22] - 2026-05-24
 
 ### Fixed

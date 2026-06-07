@@ -27,6 +27,7 @@ const state = {
   torrentActions: new Set(),
   openTorrentFiles: new Set(),
   movingHash: null,
+  manualAdding: false,
   torrentsRefreshing: false,
   torrentRefreshTimer: null,
 };
@@ -463,6 +464,60 @@ async function loadTorrents(force = false) {
     $("torrentStatus").textContent = `读取失败：${err.message}`;
   } finally {
     state.torrentsRefreshing = false;
+  }
+}
+
+function setManualAddBusy(isBusy, text = "") {
+  state.manualAdding = isBusy;
+  const elements = [$("addMagnetBtn"), $("uploadTorrentBtn"), $("torrentFileInput"), $("manualMagnet")];
+  for (const el of elements) {
+    if (el) el.disabled = isBusy;
+  }
+  if (text) $("manualAddStatus").textContent = text;
+}
+
+async function addManualMagnet() {
+  if (state.manualAdding || state.movingHash) return;
+  const magnet = $("manualMagnet").value.trim();
+  if (!magnet) {
+    $("manualAddStatus").textContent = "请先粘贴 magnet 链接。";
+    return;
+  }
+  setManualAddBusy(true, "正在添加磁力任务...");
+  try {
+    const data = await postJson("/api/qbit/add-magnet", { magnet_uri: magnet });
+    $("manualAddStatus").textContent = data.message || "已添加磁力任务。";
+    $("manualMagnet").value = "";
+    await loadTorrents(true);
+  } catch (err) {
+    $("manualAddStatus").textContent = `添加失败：${err.message}`;
+  } finally {
+    setManualAddBusy(false);
+  }
+}
+
+async function uploadTorrentFile() {
+  if (state.manualAdding || state.movingHash) return;
+  const input = $("torrentFileInput");
+  const file = input?.files?.[0];
+  if (!file) {
+    $("manualAddStatus").textContent = "请先选择 .torrent 文件。";
+    return;
+  }
+  const form = new FormData();
+  form.append("file", file);
+  setManualAddBusy(true, `正在上传种子：${file.name}`);
+  try {
+    const res = await fetch("/api/qbit/add-torrent", { method: "POST", body: form });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || body.message || `HTTP ${res.status}`);
+    $("manualAddStatus").textContent = body.message || "已添加种子任务。";
+    input.value = "";
+    await loadTorrents(true);
+  } catch (err) {
+    $("manualAddStatus").textContent = `上传失败：${err.message}`;
+  } finally {
+    setManualAddBusy(false);
   }
 }
 
@@ -1234,6 +1289,12 @@ function escapeAttr(value) {
 $("searchBtn").addEventListener("click", search);
 $("healthBtn").addEventListener("click", health);
 $("refreshTorrentsBtn").addEventListener("click", loadTorrents);
+$("addMagnetBtn").addEventListener("click", addManualMagnet);
+$("uploadTorrentBtn").addEventListener("click", uploadTorrentFile);
+$("torrentFileInput").addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  $("manualAddStatus").textContent = file ? `已选择：${file.name}` : "";
+});
 document.querySelectorAll(".tab").forEach((button) => {
   button.addEventListener("click", () => setTab(button.dataset.tab));
 });

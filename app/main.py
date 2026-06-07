@@ -4,7 +4,7 @@ import secrets
 from typing import Annotated
 
 import httpx
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .config import Settings, get_settings
 from .history import SearchHistoryStore
 from .llm_client import fallback_endpoint, health_check, primary_endpoint
-from .models import MoveSelectedRequest, RefreshTargetsRequest, SearchResponse, TargetSuggestionsRequest
+from .models import AddMagnetRequest, MoveSelectedRequest, RefreshTargetsRequest, SearchResponse, TargetSuggestionsRequest
 from .qbit import QbitClient, TorrentAlreadyExistsError, jellyfin_target_suggestions_with_llm, qbit_health, refresh_targets_existing
 from .search import load_indexers, search_and_enrich
 
@@ -202,6 +202,33 @@ async def api_add(payload: dict, _: None = Depends(require_login)):
     finally:
         await client.close()
     return JSONResponse({"ok": True, "message": "已添加到下载", "title": result.title})
+
+
+@app.post("/api/qbit/add-magnet")
+async def api_add_magnet(payload: AddMagnetRequest, _: None = Depends(require_login)):
+    client = QbitClient(get_settings())
+    try:
+        await client.add_magnet(payload.magnet_uri)
+    except TorrentAlreadyExistsError:
+        return JSONResponse({"ok": True, "duplicate": True, "message": "下载任务已存在"})
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        await client.close()
+    return JSONResponse({"ok": True, "message": "已添加磁力任务"})
+
+
+@app.post("/api/qbit/add-torrent")
+async def api_add_torrent(file: Annotated[UploadFile, File()], _: None = Depends(require_login)):
+    content = await file.read()
+    client = QbitClient(get_settings())
+    try:
+        await client.add_torrent_file(file.filename or "upload.torrent", content)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        await client.close()
+    return JSONResponse({"ok": True, "message": "已添加种子任务", "filename": file.filename})
 
 
 @app.get("/api/qbit/torrents")

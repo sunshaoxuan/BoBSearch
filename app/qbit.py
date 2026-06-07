@@ -1185,6 +1185,35 @@ class QbitClient:
                 raise TorrentAlreadyExistsError("Download task already exists")
             raise RuntimeError(f"qBittorrent add failed: {r.text[:200]}")
 
+    async def add_magnet(self, magnet_uri: str) -> None:
+        url = str(magnet_uri or "").strip()
+        if not url.lower().startswith("magnet:?"):
+            raise ValueError("请输入有效的 magnet 链接")
+        await self.add_result(SearchResult(token="manual", title="Manual magnet", magnet_uri=url))
+
+    async def add_torrent_file(self, filename: str, content: bytes) -> None:
+        if not content:
+            raise ValueError("种子文件为空")
+        if len(content) > 64 * 1024 * 1024:
+            raise ValueError("种子文件超过 64 MB")
+        safe_name = Path(filename or "upload.torrent").name
+        if not safe_name.lower().endswith(".torrent"):
+            raise ValueError("请上传 .torrent 文件")
+        if not content.startswith(b"d"):
+            raise ValueError("种子文件格式无效")
+        await self.ensure_category()
+        r = await self.client.post(
+            "/api/v2/torrents/add",
+            data={
+                "category": self.settings.qbit_category,
+                "paused": "false",
+            },
+            files={"torrents": (safe_name, content, "application/x-bittorrent")},
+        )
+        r.raise_for_status()
+        if r.text.strip().lower() not in {"ok.", "ok"}:
+            raise RuntimeError(f"qBittorrent add failed: {r.text[:200]}")
+
     async def torrents(self) -> list[QbitTorrent]:
         await self.ensure_login()
         r = await self.client.get("/api/v2/torrents/info")
