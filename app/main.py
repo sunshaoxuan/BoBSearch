@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 from typing import Annotated
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -10,10 +11,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from .config import Settings, get_settings
+from .config import Settings, get_settings, save_ai_settings
 from .history import SearchHistoryStore
-from .llm_client import fallback_endpoint, health_check, primary_endpoint
-from .models import AddMagnetRequest, MoveSelectedRequest, RefreshTargetsRequest, SearchResponse, TargetSuggestionsRequest
+from .llm_client import LlmEndpoint, fallback_endpoint, health_check, primary_endpoint, test_endpoint
+from .models import AiConfigInput, AiConfigTestInput, AddMagnetRequest, MoveSelectedRequest, RefreshTargetsRequest, SearchResponse, TargetSuggestionsRequest
 from .qbit import QbitClient, TorrentAlreadyExistsError, jellyfin_target_suggestions_with_llm, qbit_health, refresh_targets_existing
 from .search import load_indexers, search_and_enrich
 
@@ -37,6 +38,67 @@ def require_login(request: Request) -> None:
 
 def is_logged_in(request: Request) -> bool:
     return bool(request.session.get("authenticated"))
+
+
+def validate_ai_endpoint(base_url: str, model: str) -> tuple[str, str]:
+    normalized_url = base_url.strip().rstrip("/")
+    parsed = urlsplit(normalized_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="Base URL 必须是有效的 HTTP 或 HTTPS 地址")
+    normalized_model = model.strip()
+    if not normalized_model:
+        raise HTTPException(status_code=400, detail="模型名称不能为空")
+    return normalized_url, normalized_model
+
+
+def masked_key(value: str | None) -> str:
+    token = (value or "").strip()
+    if not token:
+        return ""
+    if len(token) <= 8:
+        return "********"
+    return f"{token[:4]}...{token[-4:]}"
+
+
+def public_ai_config(settings: Settings) -> dict:
+    fallback = fallback_endpoint(settings)
+    return {
+        "primary": {
+            "base_url": settings.llm_base_url,
+            "model": settings.llm_model,
+            "api_type": settings.llm_api_type,
+            "api_key_configured": bool(settings.llm_api_key.strip()),
+            "api_key_masked": masked_key(settings.llm_api_key),
+            "request_url": f"{settings.llm_base_url.rstrip('/')}/responses" if settings.llm_api_type == "responses" else f"{settings.llm_base_url.rstrip('/')}/chat/completions",
+        },
+        "fallback": {
+            "base_url": fallback.base_url if fallback else (settings.llm_fallback_base_url or settings.llm_base_url),
+            "model": fallback.model if fallback else "",
+            "api_type": fallback.api_type if fallback else settings.llm_fallback_api_type,
+            "api_key_configured": bool((fallback.api_key if fallback else settings.llm_api_key) or ""),
+            "api_key_masked": masked_key(fallback.api_key if fallback else settings.llm_api_key),
+            "request_url": f"{(fallback.base_url if fallback else settings.llm_base_url).rstrip('/')}/responses" if (fallback.api_type if fallback else settings.llm_fallback_api_type) == "responses" else f"{(fallback.base_url if fallback else settings.llm_base_url).rstrip('/')}/chat/completions",
+        },
+        "shared_api_key": True,
+    }
+
+
+def ai_overrides(payload: AiConfigInput, current: Settings) -> dict[str, str]:
+    primary_url, primary_model = validate_ai_endpoint(payload.primary.base_url, payload.primary.model)
+    fallback_url, fallback_model = validate_ai_endpoint(payload.fallback.base_url, payload.fallback.model)
+    shared_key = (payload.primary.api_key or payload.fallback.api_key or current.llm_api_key).strip()
+    if not shared_key:
+        raise HTTPException(status_code=400, detail="API Key 不能为空")
+    return {
+        "llm_base_url": primary_url,
+        "llm_api_key": shared_key,
+        "llm_model": primary_model,
+        "llm_api_type": payload.primary.api_type,
+        "llm_fallback_base_url": fallback_url,
+        "llm_fallback_api_key": shared_key,
+        "llm_fallback_model": fallback_model,
+        "llm_fallback_api_type": payload.fallback.api_type,
+    }
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -106,6 +168,39 @@ async def health(_: None = Depends(require_login)):
         "llm": llm,
         "llm_fallback": llm_fallback,
     }
+
+
+@app.get("/api/ai/config")
+async def api_ai_config(_: None = Depends(require_login)):
+    return public_ai_config(get_settings())
+
+
+@app.put("/api/ai/config")
+async def api_ai_config_save(payload: AiConfigInput, _: None = Depends(require_login)):
+    overrides = ai_overrides(payload, get_settings())
+    try:
+        save_ai_settings(overrides)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"AI 配置保存失败：{type(exc).__name__}: {str(exc)[:200]}") from exc
+    return {"ok": True, "message": "AI 配置已保存并立即生效", "config": public_ai_config(get_settings())}
+
+
+@app.post("/api/ai/config/test")
+async def api_ai_config_test(payload: AiConfigTestInput, _: None = Depends(require_login)):
+    overrides = ai_overrides(payload.config, get_settings())
+    prefix = "llm" if payload.endpoint == "primary" else "llm_fallback"
+    endpoint = LlmEndpoint(
+        name=payload.endpoint,
+        base_url=overrides[f"{prefix}_base_url"],
+        model=overrides[f"{prefix}_model"],
+        api_key=overrides[f"{prefix}_api_key"],
+        api_type=overrides[f"{prefix}_api_type"],
+    )
+    try:
+        result = await test_endpoint(endpoint)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"连接测试失败：{type(exc).__name__}: {str(exc)[:240]}") from exc
+    return {"ok": True, "message": "连接与模型调用测试通过", **result}
 
 
 @app.post("/api/search")

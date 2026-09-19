@@ -28,6 +28,8 @@ const state = {
   openTorrentFiles: new Set(),
   movingHash: null,
   manualAdding: false,
+  aiConfigLoaded: false,
+  aiConfigBusy: false,
   torrentsRefreshing: false,
   torrentRefreshTimer: null,
 };
@@ -58,6 +60,17 @@ async function postJson(url, data, options = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
     signal: options.signal,
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || body.message || `HTTP ${res.status}`);
+  return body;
+}
+
+async function putJson(url, data) {
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.detail || body.message || `HTTP ${res.status}`);
@@ -534,7 +547,111 @@ function renderDownloadSummary() {
   $("downloadMeta").textContent = state.torrentsLoaded ? "显示下载工具全部任务，已完成任务可移动入库。" : "进入下载管理后读取下载工具清单。";
 }
 
+function aiRequestUrl(baseUrl, apiType) {
+  const base = String(baseUrl || "").trim().replace(/\/+$/, "");
+  return `${base}/${apiType === "responses" ? "responses" : "chat/completions"}`;
+}
+
+function updateAiRequestPreviews() {
+  $("aiPrimaryRequestUrl").textContent = aiRequestUrl($("aiPrimaryBaseUrl").value, $("aiPrimaryApiType").value);
+  $("aiFallbackRequestUrl").textContent = aiRequestUrl($("aiFallbackBaseUrl").value, $("aiFallbackApiType").value);
+}
+
+function aiConfigPayload() {
+  const sharedKey = $("aiSharedApiKey").value.trim() || null;
+  return {
+    primary: {
+      base_url: $("aiPrimaryBaseUrl").value.trim(),
+      model: $("aiPrimaryModel").value.trim(),
+      api_type: $("aiPrimaryApiType").value,
+      api_key: sharedKey,
+    },
+    fallback: {
+      base_url: $("aiFallbackBaseUrl").value.trim(),
+      model: $("aiFallbackModel").value.trim(),
+      api_type: $("aiFallbackApiType").value,
+      api_key: sharedKey,
+    },
+  };
+}
+
+function setAiConfigBusy(isBusy, message = "") {
+  state.aiConfigBusy = isBusy;
+  [
+    "aiPrimaryBaseUrl", "aiPrimaryModel", "aiPrimaryApiType",
+    "aiFallbackBaseUrl", "aiFallbackModel", "aiFallbackApiType",
+    "aiSharedApiKey", "testAiPrimaryBtn", "testAiFallbackBtn",
+    "saveAiConfigBtn", "reloadAiConfigBtn",
+  ].forEach((id) => { $(id).disabled = isBusy; });
+  if (message) $("aiConfigStatus").textContent = message;
+}
+
+function renderAiConfigSummary(data) {
+  $("aiConfigSummary").innerHTML = `
+    ${healthItem("主模型", true, `${data.primary.model} · ${data.primary.api_type === "responses" ? "Responses" : "Chat Completions"}`)}
+    ${healthItem("备用模型", true, `${data.fallback.model} · ${data.fallback.api_type === "responses" ? "Responses" : "Chat Completions"}`)}
+  `;
+}
+
+async function loadAiConfig(force = false) {
+  if (state.aiConfigBusy || (state.aiConfigLoaded && !force)) return;
+  setAiConfigBusy(true, "正在读取 AI 配置...");
+  try {
+    const data = await getJson("/api/ai/config");
+    $("aiPrimaryBaseUrl").value = data.primary.base_url || "";
+    $("aiPrimaryModel").value = data.primary.model || "";
+    $("aiPrimaryApiType").value = data.primary.api_type || "responses";
+    $("aiFallbackBaseUrl").value = data.fallback.base_url || "";
+    $("aiFallbackModel").value = data.fallback.model || "";
+    $("aiFallbackApiType").value = data.fallback.api_type || "chat_completions";
+    $("aiSharedApiKey").value = "";
+    $("aiKeyState").textContent = data.primary.api_key_configured
+      ? `当前 Key 已配置：${data.primary.api_key_masked}。输入新值才会替换。`
+      : "当前尚未配置 API Key。";
+    updateAiRequestPreviews();
+    renderAiConfigSummary(data);
+    state.aiConfigLoaded = true;
+    $("aiConfigStatus").textContent = "AI 配置已载入。";
+  } catch (err) {
+    $("aiConfigStatus").textContent = `读取失败：${err.message}`;
+  } finally {
+    setAiConfigBusy(false);
+  }
+}
+
+async function saveAiConfig() {
+  if (state.aiConfigBusy) return;
+  setAiConfigBusy(true, "正在保存并应用 AI 配置...");
+  try {
+    const data = await putJson("/api/ai/config", aiConfigPayload());
+    state.aiConfigLoaded = false;
+    $("aiConfigStatus").textContent = data.message;
+    setAiConfigBusy(false);
+    await loadAiConfig(true);
+    await health();
+  } catch (err) {
+    $("aiConfigStatus").textContent = `保存失败：${err.message}`;
+  } finally {
+    setAiConfigBusy(false);
+  }
+}
+
+async function testAiConfig(endpoint) {
+  if (state.aiConfigBusy) return;
+  const label = endpoint === "primary" ? "主模型" : "备用模型";
+  setAiConfigBusy(true, `正在调用${label}进行连接测试...`);
+  try {
+    const data = await postJson("/api/ai/config/test", { endpoint, config: aiConfigPayload() });
+    $("aiConfigStatus").textContent = `${label}：${data.message}`;
+  } catch (err) {
+    $("aiConfigStatus").textContent = `${label}测试失败：${err.message}`;
+  } finally {
+    setAiConfigBusy(false);
+  }
+}
+
 function setTab(tab, options = {}) {
+  if (!["search", "downloads", "ai"].includes(tab)) tab = "search";
   state.activeTab = tab;
   writeActiveTab(tab);
   document.querySelectorAll(".tab").forEach((button) => {
@@ -542,16 +659,21 @@ function setTab(tab, options = {}) {
   });
   $("searchTab").classList.toggle("active", tab === "search");
   $("downloadsTab").classList.toggle("active", tab === "downloads");
+  $("aiTab").classList.toggle("active", tab === "ai");
   $("searchSideCard").classList.toggle("hidden", tab !== "search");
   $("downloadsSideCard").classList.toggle("hidden", tab !== "downloads");
+  $("aiSideCard").classList.toggle("hidden", tab !== "ai");
   if (tab === "downloads") {
     loadTorrents();
     startTorrentAutoRefresh();
-  } else {
+  } else if (tab === "search") {
     stopTorrentAutoRefresh();
     if (options.restoreHistory !== false) {
       restoreLatestSearchIfNeeded();
     }
+  } else {
+    stopTorrentAutoRefresh();
+    loadAiConfig();
   }
 }
 
@@ -1291,6 +1413,14 @@ $("healthBtn").addEventListener("click", health);
 $("refreshTorrentsBtn").addEventListener("click", loadTorrents);
 $("addMagnetBtn").addEventListener("click", addManualMagnet);
 $("uploadTorrentBtn").addEventListener("click", uploadTorrentFile);
+$("saveAiConfigBtn").addEventListener("click", saveAiConfig);
+$("testAiPrimaryBtn").addEventListener("click", () => testAiConfig("primary"));
+$("testAiFallbackBtn").addEventListener("click", () => testAiConfig("fallback"));
+$("reloadAiConfigBtn").addEventListener("click", () => loadAiConfig(true));
+["aiPrimaryBaseUrl", "aiPrimaryApiType", "aiFallbackBaseUrl", "aiFallbackApiType"].forEach((id) => {
+  $(id).addEventListener("input", updateAiRequestPreviews);
+  $(id).addEventListener("change", updateAiRequestPreviews);
+});
 $("torrentFileInput").addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   $("manualAddStatus").textContent = file ? `已选择：${file.name}` : "";

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -103,6 +105,23 @@ class MoveSelectedRequest(BaseModel):
 
 class AddMagnetRequest(BaseModel):
     magnet_uri: str
+
+
+class AiEndpointInput(BaseModel):
+    base_url: str
+    model: str
+    api_type: Literal["responses", "chat_completions"]
+    api_key: str | None = None
+
+
+class AiConfigInput(BaseModel):
+    primary: AiEndpointInput
+    fallback: AiEndpointInput
+
+
+class AiConfigTestInput(BaseModel):
+    endpoint: Literal["primary", "fallback"]
+    config: AiConfigInput
 
 
 class RefreshTargetsRequest(BaseModel):

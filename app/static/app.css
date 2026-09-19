@@ -667,6 +667,93 @@ button.ghost.danger {
   padding: 16px;
 }
 
+.ai-config-panel {
+  display: grid;
+  gap: 16px;
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.ai-endpoint-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ai-endpoint-card {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.ai-endpoint-card legend {
+  padding: 0 8px;
+  color: var(--accent-strong);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.ai-endpoint-card label,
+.ai-key-panel label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.ai-endpoint-card input,
+.ai-endpoint-card select,
+.ai-key-panel input {
+  width: 100%;
+}
+
+.request-preview {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(239, 246, 255, 0.72);
+}
+
+.request-preview span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.request-preview code {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ai-key-panel {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(8, 145, 178, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.ai-config-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ai-config-actions button {
+  min-width: 180px;
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -1224,8 +1311,12 @@ button.ghost.danger {
 
   .tabs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
+  }
+
+  .ai-endpoint-grid {
+    grid-template-columns: 1fr;
   }
 
   .loading-panel {
@@ -1581,8 +1672,16 @@ button.ghost.danger {
     width: 100%;
   }
 
-  .search-panel, .download-panel, .side-card, .card, .torrent-card {
+  .search-panel, .download-panel, .ai-config-panel, .side-card, .card, .torrent-card {
     padding: 10px;
+  }
+
+  .ai-endpoint-card {
+    padding: 12px;
+  }
+
+  .ai-config-actions button {
+    width: 100%;
   }
 
   input, select, button {

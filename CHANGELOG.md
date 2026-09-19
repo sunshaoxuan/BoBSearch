@@ -6,6 +6,19 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.24] - 2026-09-19
+
+### Added
+
+- Added an authenticated AI configuration page for primary and fallback model settings.
+- Added runtime switching between Responses API and Chat Completions API.
+- Added per-model connection and inference tests with masked API key display.
+
+### Changed
+
+- Updated initial AI defaults to `gpt-6-astra` through Responses API and `hf.co/unsloth/Qwen3.8-27B-GGUF:UD-IQ3_S` through Chat Completions API.
+- Primary and fallback models now share one API key by default.
+
 ## [1.0.23] - 2026-06-07
 
 ### Added

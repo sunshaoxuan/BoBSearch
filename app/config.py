@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import json
+import os
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "BoBSearch"
-    app_version: str = "1.0.23"
+    app_version: str = "1.0.24"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     app_data_dir: str = "/app/data"
@@ -32,12 +35,15 @@ class Settings(BaseSettings):
     jellyfin_library_path: str = "/jellyfin/library"
     software_library_path: str = "/software"
 
-    llm_base_url: str
+    llm_base_url: str = "http://ccnode.briconbric.com:49530/v1"
     llm_api_key: str
-    llm_model: str = "gpt-5.5"
-    llm_fallback_base_url: str | None = None
+    llm_model: str = "gpt-6-astra"
+    llm_api_type: str = "responses"
+    llm_fallback_base_url: str | None = "http://ccnode.briconbric.com:49530/v1"
     llm_fallback_api_key: str | None = None
-    llm_fallback_model: str | None = None
+    llm_fallback_model: str | None = "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-IQ3_S"
+    llm_fallback_api_type: str = "chat_completions"
+    ai_config_path: str = "/app/data/ai-config.json"
 
     search_concurrency: int = 8
     indexer_timeout_seconds: float = 12
@@ -49,5 +55,42 @@ class Settings(BaseSettings):
 
 
 @lru_cache
-def get_settings() -> Settings:
+def get_base_settings() -> Settings:
     return Settings()
+
+
+def _runtime_ai_overrides(settings: Settings) -> dict[str, str | None]:
+    path = Path(settings.ai_config_path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    allowed = {
+        "llm_base_url",
+        "llm_api_key",
+        "llm_model",
+        "llm_api_type",
+        "llm_fallback_base_url",
+        "llm_fallback_api_key",
+        "llm_fallback_model",
+        "llm_fallback_api_type",
+    }
+    return {key: value for key, value in data.items() if key in allowed and isinstance(value, (str, type(None)))}
+
+
+def get_settings() -> Settings:
+    base = get_base_settings()
+    overrides = _runtime_ai_overrides(base)
+    return base.model_copy(update=overrides) if overrides else base
+
+
+def save_ai_settings(overrides: dict[str, str | None]) -> None:
+    settings = get_base_settings()
+    path = Path(settings.ai_config_path)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temporary = path.with_suffix(f"{path.suffix}.tmp")
+    temporary.write_text(json.dumps(overrides, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.chmod(temporary, 0o600)
+    temporary.replace(path)

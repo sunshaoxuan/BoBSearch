@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BoBSearch</title>
   <link rel="icon" href="/static/brand/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/app.css?v=1.0.23">
+  <link rel="stylesheet" href="/static/app.css?v=1.0.24">
 </head>
 <body>
   <div class="app-shell">
@@ -26,6 +26,7 @@
         <nav class="tabs glass" aria-label="主要功能">
           <button class="tab active" data-tab="search" type="button">视频搜索</button>
           <button class="tab" data-tab="downloads" type="button">下载管理</button>
+          <button class="tab" data-tab="ai" type="button">AI 配置</button>
         </nav>
 
         <section id="searchTab" class="tab-panel active">
@@ -97,6 +98,60 @@
             <div id="torrentList" class="torrent-list"></div>
           </section>
         </section>
+
+        <section id="aiTab" class="tab-panel">
+          <section class="ai-config-panel glass">
+            <div class="section-head">
+              <div>
+                <span class="eyebrow">AI Configuration</span>
+                <h2>AI 配置</h2>
+              </div>
+              <button id="reloadAiConfigBtn" class="ghost" type="button">重新载入</button>
+            </div>
+            <p class="section-note">主模型与备用模型共用同一 API Key。保存后立即生效，无需重启服务。</p>
+
+            <div class="ai-endpoint-grid">
+              <fieldset class="ai-endpoint-card">
+                <legend>主模型</legend>
+                <label>Base URL<input id="aiPrimaryBaseUrl" type="url" autocomplete="off"></label>
+                <label>模型名称<input id="aiPrimaryModel" autocomplete="off"></label>
+                <label>调用方式
+                  <select id="aiPrimaryApiType">
+                    <option value="responses">Responses API</option>
+                    <option value="chat_completions">Chat Completions API</option>
+                  </select>
+                </label>
+                <div class="request-preview"><span>完整请求地址</span><code id="aiPrimaryRequestUrl"></code></div>
+                <button id="testAiPrimaryBtn" class="ghost" type="button">测试主模型</button>
+              </fieldset>
+
+              <fieldset class="ai-endpoint-card">
+                <legend>备用模型</legend>
+                <label>Base URL<input id="aiFallbackBaseUrl" type="url" autocomplete="off"></label>
+                <label>模型名称<input id="aiFallbackModel" autocomplete="off"></label>
+                <label>调用方式
+                  <select id="aiFallbackApiType">
+                    <option value="responses">Responses API</option>
+                    <option value="chat_completions">Chat Completions API</option>
+                  </select>
+                </label>
+                <div class="request-preview"><span>完整请求地址</span><code id="aiFallbackRequestUrl"></code></div>
+                <button id="testAiFallbackBtn" class="ghost" type="button">测试备用模型</button>
+              </fieldset>
+            </div>
+
+            <div class="ai-key-panel">
+              <label>统一 API Key
+                <input id="aiSharedApiKey" type="password" autocomplete="new-password" placeholder="留空表示沿用当前 Key">
+              </label>
+              <p id="aiKeyState" class="section-note"></p>
+            </div>
+            <div class="ai-config-actions">
+              <button id="saveAiConfigBtn" type="button">保存并应用</button>
+            </div>
+            <div id="aiConfigStatus" class="mini-status" aria-live="polite"></div>
+          </section>
+        </section>
       </section>
 
       <aside class="side-column">
@@ -110,6 +165,11 @@
           <div id="downloadSummary" class="summary metrics"></div>
           <p id="downloadMeta" class="view-meta">进入下载管理后读取下载工具清单。</p>
         </section>
+        <section id="aiSideCard" class="glass side-card hidden">
+          <h2>AI 配置状态</h2>
+          <p class="view-meta">配置保存在服务端数据卷。API Key 不会回传到浏览器。</p>
+          <div id="aiConfigSummary" class="health-panel"></div>
+        </section>
         <section class="glass side-card">
           <h2>服务状态</h2>
           <div id="healthPanel" class="health-panel"></div>
@@ -118,6 +178,6 @@
     </main>
   </div>
 
-  <script src="/static/app.js?v=1.0.23"></script>
+  <script src="/static/app.js?v=1.0.24"></script>
 </body>
 </html>

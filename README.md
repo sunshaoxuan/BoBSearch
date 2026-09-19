@@ -1,6 +1,6 @@
 # BoBSearch
 
-Current release: **1.0.23**
+Current release: **1.0.24**
 
 BoBSearch is a self-hosted media search and download management console. It searches Jackett indexers, deduplicates results, uses an OpenAI-compatible LLM to summarize releases, adds selected resources to qBittorrent, and moves completed downloads into a Jellyfin library.
 
@@ -11,6 +11,7 @@ Only BoBSearch needs to be exposed to users. qBittorrent and Jackett can either 
 - Search Jackett indexers with deterministic deduplication.
 - Relevance scoring for Chinese and mixed-language queries.
 - LLM-assisted release naming, quality tags, and recommendation notes.
+- Runtime AI configuration page with separate primary and fallback models, protocol selection, connection tests, and a shared API key.
 - Add selected results, pasted magnet links, or uploaded `.torrent` files to qBittorrent through BoBSearch only.
 - Manage qBittorrent tasks, inspect file trees, and move completed files to Jellyfin.
 - Start, stop, and delete qBittorrent tasks, including delete-with-files cleanup.
@@ -65,7 +66,8 @@ Important groups:
 - `JACKETT_*`: Jackett API URL, API key, and indexer config mount.
 - `QBIT_*`: qBittorrent API URL, credentials, category, and path mapping.
 - `JELLYFIN_*`: Jellyfin library path mounted into BoBSearch.
-- `LLM_*`: OpenAI-compatible API base URL, key, main model, and optional fallback model. Fallback can point to a separate Ollama `/v1` endpoint and may leave `LLM_FALLBACK_API_KEY` empty.
+- `LLM_*`: API base URL, shared key, model, and API type for the primary and fallback models. Supported API types are `responses` and `chat_completions`. Leave `LLM_FALLBACK_API_KEY` empty to reuse `LLM_API_KEY`.
+- `AI_CONFIG_PATH`: server-side runtime AI configuration written by the AI configuration page. The file stays in the private application data volume with mode `0600`.
 - `SEARCH_*`: concurrency and timeout tuning.
 
 The qB path mapping is important:
