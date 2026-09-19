@@ -957,23 +957,35 @@ button.ghost.danger {
 
 .torrent-control-row {
   display: grid;
-  grid-template-columns: repeat(3, 44px);
-  gap: 8px;
+  grid-template-columns: repeat(3, 48px);
+  gap: 10px;
   justify-content: end;
 }
 
 .torrent-action {
-  width: 44px;
-  min-width: 44px;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
   padding: 0;
+  border-radius: 50%;
   justify-self: end;
   white-space: nowrap;
   text-align: center;
+  box-shadow: 0 7px 18px rgba(37, 99, 235, 0.1);
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
 .torrent-expand-btn {
   width: 100%;
   min-width: 0;
+  height: 46px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.torrent-action:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.18);
 }
 
 .icon-btn {
@@ -983,11 +995,11 @@ button.ghost.danger {
 }
 
 .icon-btn svg {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 2.35;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1481,11 +1493,19 @@ button.ghost.danger {
   }
 
   .torrent-control-row {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    justify-content: stretch;
+    grid-template-columns: repeat(3, 48px);
+    justify-content: center;
+    width: auto;
   }
 
-  .torrent-action {
+  .torrent-control-row .torrent-action {
+    width: 48px;
+    min-width: 48px;
+    border-radius: 50%;
+    justify-self: center;
+  }
+
+  .torrent-expand-btn {
     width: 100%;
     min-width: 0;
     justify-self: stretch;

@@ -6,6 +6,12 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.26] - 2026-09-19
+
+### Changed
+
+- Refined download-task icon controls with larger glyphs, circular primary controls, and a softer expand control on desktop and mobile.
+
 ## [1.0.25] - 2026-09-19
 
 ### Added
