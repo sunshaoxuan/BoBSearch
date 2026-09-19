@@ -124,6 +124,24 @@ class AiConfigTestInput(BaseModel):
     config: AiConfigInput
 
 
+class KeywordSuggestionRequest(BaseModel):
+    description: str
+    category: str = "all"
+
+
+class KeywordCandidate(BaseModel):
+    keyword: str
+    label: str
+    kind: str = "title"
+    reason: str = ""
+    confidence: float = 0.0
+
+
+class KeywordSuggestionResponse(BaseModel):
+    summary: str = ""
+    candidates: list[KeywordCandidate] = Field(default_factory=list)
+
+
 class RefreshTargetsRequest(BaseModel):
     targets: list[dict]
 

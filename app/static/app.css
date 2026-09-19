@@ -164,6 +164,110 @@ button, input, select {
   gap: 10px;
 }
 
+.ai-discovery-panel {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.ai-discovery-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.ai-discovery-input textarea {
+  width: 100%;
+  min-height: 58px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.76);
+  font: inherit;
+  line-height: 1.45;
+  outline: none;
+}
+
+.ai-discovery-input textarea:focus {
+  border-color: rgba(37, 99, 235, 0.5);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+.ai-discovery-input button {
+  height: auto;
+  min-height: 58px;
+}
+
+.keyword-suggestion-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.keyword-summary {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.keyword-candidates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.keyword-candidate {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid rgba(116, 139, 171, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  cursor: pointer;
+}
+
+.keyword-candidate input {
+  width: 17px;
+  height: 17px;
+  margin: 2px 0 0;
+}
+
+.keyword-candidate span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.keyword-candidate strong,
+.keyword-candidate small {
+  overflow-wrap: anywhere;
+}
+
+.keyword-candidate strong {
+  font-size: 13px;
+}
+
+.keyword-candidate small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.keyword-actions {
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) 90px;
+  gap: 8px;
+}
+
 .filter-grid {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) 140px 120px;
@@ -1307,6 +1411,16 @@ button.ghost.danger {
   .search-grid, .filter-grid, .history-grid {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .ai-discovery-input,
+  .keyword-candidates,
+  .keyword-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-discovery-input button {
+    min-height: 40px;
   }
 
   .tabs {

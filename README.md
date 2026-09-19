@@ -1,6 +1,6 @@
 # BoBSearch
 
-Current release: **1.0.24**
+Current release: **1.0.25**
 
 BoBSearch is a self-hosted media search and download management console. It searches Jackett indexers, deduplicates results, uses an OpenAI-compatible LLM to summarize releases, adds selected resources to qBittorrent, and moves completed downloads into a Jellyfin library.
 
@@ -10,6 +10,8 @@ Only BoBSearch needs to be exposed to users. qBittorrent and Jackett can either 
 
 - Search Jackett indexers with deterministic deduplication.
 - Relevance scoring for Chinese and mixed-language queries.
+- AI-assisted title discovery from actors, plot, setting, era, or other remembered clues, with selectable Chinese and English search aliases.
+- Multi-keyword search that queries each selected title separately, then merges, deduplicates, and ranks the combined result set.
 - LLM-assisted release naming, quality tags, and recommendation notes.
 - Runtime AI configuration page with separate primary and fallback models, protocol selection, connection tests, and a shared API key.
 - Add selected results, pasted magnet links, or uploaded `.torrent` files to qBittorrent through BoBSearch only.

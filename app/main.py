@@ -14,9 +14,9 @@ from starlette.middleware.sessions import SessionMiddleware
 from .config import Settings, get_settings, save_ai_settings
 from .history import SearchHistoryStore
 from .llm_client import LlmEndpoint, fallback_endpoint, health_check, primary_endpoint, test_endpoint
-from .models import AiConfigInput, AiConfigTestInput, AddMagnetRequest, MoveSelectedRequest, RefreshTargetsRequest, SearchResponse, TargetSuggestionsRequest
+from .models import AiConfigInput, AiConfigTestInput, AddMagnetRequest, KeywordSuggestionRequest, MoveSelectedRequest, RefreshTargetsRequest, SearchResponse, TargetSuggestionsRequest
 from .qbit import QbitClient, TorrentAlreadyExistsError, jellyfin_target_suggestions_with_llm, qbit_health, refresh_targets_existing
-from .search import load_indexers, search_and_enrich
+from .search import load_indexers, search_and_enrich, search_and_enrich_queries, suggest_search_keywords
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, version=settings.app_version)
@@ -206,11 +206,27 @@ async def api_ai_config_test(payload: AiConfigTestInput, _: None = Depends(requi
 @app.post("/api/search")
 async def api_search(payload: dict, _: None = Depends(require_login)):
     query = str(payload.get("query") or "").strip()
+    raw_queries = payload.get("queries") or []
+    if not isinstance(raw_queries, list):
+        raw_queries = []
+    queries: list[str] = []
+    for item in raw_queries:
+        value = str(item or "").strip()
+        if len(value) >= 2 and value.casefold() not in {existing.casefold() for existing in queries}:
+            queries.append(value)
+        if len(queries) >= 6:
+            break
+    if not queries and query:
+        queries = [query]
     category = str(payload.get("category") or "all")
     sort = str(payload.get("sort") or "seeders")
-    if len(query) < 2:
+    if not queries:
         raise HTTPException(status_code=400, detail="请输入至少两个字符")
-    response = await search_and_enrich(get_settings(), query, category)
+    response = await (
+        search_and_enrich(get_settings(), queries[0], category)
+        if len(queries) == 1
+        else search_and_enrich_queries(get_settings(), queries, category)
+    )
     if sort == "size":
         response.results.sort(key=lambda r: r.size or -1, reverse=True)
     elif sort == "date":
@@ -221,9 +237,23 @@ async def api_search(payload: dict, _: None = Depends(require_login)):
         response.results.sort(key=lambda r: r.seeders or -1, reverse=True)
     item = history_store().save(response, category, sort)
     response.history_id = item["id"]
-    SEARCH_CACHE[query] = response
+    SEARCH_CACHE[response.query] = response
     SEARCH_CACHE[item["id"]] = response
     return response
+
+
+@app.post("/api/search/keywords")
+async def api_search_keywords(payload: KeywordSuggestionRequest, _: None = Depends(require_login)):
+    description = payload.description.strip()
+    if len(description) < 4:
+        raise HTTPException(status_code=400, detail="请至少输入四个字符的片名线索或剧情描述")
+    try:
+        suggestions = await suggest_search_keywords(get_settings(), description[:1200], payload.category)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"关键词生成失败：{type(exc).__name__}: {str(exc)[:220]}") from exc
+    if not suggestions.candidates:
+        raise HTTPException(status_code=422, detail="大模型没有生成可用的搜索关键词，请补充演员、剧情、年代或地区信息")
+    return suggestions
 
 
 @app.get("/api/search/history")

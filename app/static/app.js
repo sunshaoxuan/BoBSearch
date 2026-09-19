@@ -30,6 +30,8 @@ const state = {
   manualAdding: false,
   aiConfigLoaded: false,
   aiConfigBusy: false,
+  keywordCandidates: [],
+  keywordBusy: false,
   torrentsRefreshing: false,
   torrentRefreshTimer: null,
 };
@@ -120,9 +122,16 @@ function healthItem(label, ok, text) {
   return `<div class="health-item ${ok ? "ok" : "bad"}"><span>${escapeHtml(label)}</span><strong>${ok ? "OK" : "FAIL"}</strong><small>${escapeHtml(text || "")}</small></div>`;
 }
 
-async function search() {
+async function search(selectedQueries = null) {
   if (state.movingHash) return;
-  const query = $("query").value.trim();
+  let queries = Array.isArray(selectedQueries)
+    ? selectedQueries.map((item) => String(item || "").trim()).filter((item) => item.length >= 2)
+    : [];
+  const typedQuery = $("query").value.trim();
+  if (!queries.length && typedQuery.includes(" | ")) {
+    queries = typedQuery.split("|").map((item) => item.trim()).filter((item) => item.length >= 2).slice(0, 6);
+  }
+  const query = queries.length ? queries.join(" | ") : typedQuery;
   if (query.length < 2) {
     $("status").textContent = "请输入至少两个字符。";
     return;
@@ -144,17 +153,19 @@ async function search() {
   setSearching(true);
   try {
     const data = await postJson("/api/search", {
-      query,
+      query: queries[0] || query,
+      queries,
       category: $("category").value,
       sort: $("sort").value,
     }, { signal: state.searchController.signal });
     if (requestId !== state.searchRequestId) return;
     state.response = data;
     state.results = data.results || [];
+    state.query = data.query || query;
     state.currentHistoryId = data.history_id || null;
     state.currentHistoryItem = {
       id: data.history_id || "",
-      query,
+      query: data.query || query,
       category: $("category").value,
       sort: $("sort").value,
       total_deduped: data.total_deduped || 0,
@@ -186,6 +197,83 @@ function setSearching(isSearching) {
     $("results").innerHTML = loadingPanel();
     $("pagination").innerHTML = "";
   }
+}
+
+function setKeywordBusy(isBusy, message = "") {
+  state.keywordBusy = isBusy;
+  $("suggestKeywordsBtn").disabled = isBusy;
+  $("keywordPrompt").disabled = isBusy;
+  $("searchSelectedKeywordsBtn").disabled = isBusy;
+  $("suggestKeywordsBtn").textContent = isBusy ? "识别中" : "AI 找片";
+  if (message) $("keywordStatus").textContent = message;
+}
+
+function renderKeywordCandidates() {
+  $("keywordCandidates").innerHTML = state.keywordCandidates.map((candidate, index) => {
+    const confidence = Math.round((Number(candidate.confidence) || 0) * 100);
+    const checked = index < 3 ? "checked" : "";
+    return `
+      <label class="keyword-candidate">
+        <input type="checkbox" value="${escapeAttr(candidate.keyword)}" ${checked}>
+        <span>
+          <strong>${escapeHtml(candidate.label || candidate.keyword)}</strong>
+          <small>${escapeHtml(candidate.keyword)} · 置信度 ${confidence}%${candidate.reason ? ` · ${escapeHtml(candidate.reason)}` : ""}</small>
+        </span>
+      </label>
+    `;
+  }).join("");
+}
+
+async function suggestKeywords() {
+  if (state.keywordBusy) return;
+  const description = $("keywordPrompt").value.trim();
+  if (description.length < 4) {
+    $("keywordStatus").textContent = "请至少输入四个字符的片名线索或剧情描述。";
+    return;
+  }
+  setKeywordBusy(true, "正在识别作品并整理可搜索的片名和别名...");
+  try {
+    const data = await postJson("/api/search/keywords", {
+      description,
+      category: $("category").value,
+    });
+    state.keywordCandidates = data.candidates || [];
+    $("keywordSummary").textContent = data.summary || "请选择要查询的关键词。";
+    renderKeywordCandidates();
+    $("keywordSuggestionPanel").classList.remove("hidden");
+    $("keywordStatus").textContent = `已生成 ${state.keywordCandidates.length} 个候选关键词。`;
+  } catch (err) {
+    $("keywordStatus").textContent = `识别失败：${err.message}`;
+  } finally {
+    setKeywordBusy(false);
+  }
+}
+
+function selectedKeywordQueries() {
+  return [...document.querySelectorAll("#keywordCandidates input:checked")]
+    .map((input) => input.value.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function searchSelectedKeywords() {
+  const queries = selectedKeywordQueries();
+  if (!queries.length) {
+    $("keywordStatus").textContent = "请至少勾选一个候选关键词。";
+    return;
+  }
+  $("query").value = queries.join(" | ");
+  $("keywordStatus").textContent = `将分别搜索 ${queries.length} 个关键词并合并结果。`;
+  search(queries);
+}
+
+function clearKeywordSuggestions() {
+  state.keywordCandidates = [];
+  $("keywordPrompt").value = "";
+  $("keywordCandidates").innerHTML = "";
+  $("keywordSummary").textContent = "";
+  $("keywordStatus").textContent = "";
+  $("keywordSuggestionPanel").classList.add("hidden");
 }
 
 function statusLoading() {
@@ -228,7 +316,12 @@ function render() {
 
   renderSummary(filtered, start, pageItems.length, totalPages);
   renderErrors();
-  $("results").innerHTML = pageItems.map(card).join("") || emptyState("没有符合当前过滤条件的结果。");
+  const noRelevantResults = !pageItems.length && low.length && state.relevanceMode === "smart";
+  $("results").innerHTML = pageItems.map(card).join("") || emptyState(
+    noRelevantResults
+      ? "搜索源返回了结果，但没有任何标题命中所选关键词。下方仅保留低相关诊断结果，可尝试 AI 找片生成正式片名、简称和英文名。"
+      : "没有符合当前过滤条件的结果。"
+  );
   renderLowResults(low);
   renderPagination(visible.length, totalPages);
 }
@@ -1413,6 +1506,12 @@ $("healthBtn").addEventListener("click", health);
 $("refreshTorrentsBtn").addEventListener("click", loadTorrents);
 $("addMagnetBtn").addEventListener("click", addManualMagnet);
 $("uploadTorrentBtn").addEventListener("click", uploadTorrentFile);
+$("suggestKeywordsBtn").addEventListener("click", suggestKeywords);
+$("searchSelectedKeywordsBtn").addEventListener("click", searchSelectedKeywords);
+$("clearKeywordSuggestionsBtn").addEventListener("click", clearKeywordSuggestions);
+$("keywordPrompt").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) suggestKeywords();
+});
 $("saveAiConfigBtn").addEventListener("click", saveAiConfig);
 $("testAiPrimaryBtn").addEventListener("click", () => testAiConfig("primary"));
 $("testAiFallbackBtn").addEventListener("click", () => testAiConfig("fallback"));

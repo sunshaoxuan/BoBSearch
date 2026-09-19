@@ -1,4 +1,9 @@
-from app.search import build_jackett_params, dedupe, llm_payload, magnet_hash, RawItem, score_relevance
+import asyncio
+import json
+
+import app.search as search_module
+from app.models import IndexerStatus
+from app.search import apply_relevance_queries, build_jackett_params, dedupe, llm_payload, magnet_hash, RawItem, score_relevance, search_and_enrich_queries, suggest_search_keywords
 
 
 def test_magnet_hash_extracts_btih():
@@ -93,3 +98,54 @@ def test_mixed_cjk_latin_and_number_relevance():
     assert score >= 0.72
     assert level == "high"
     assert any("英文/数字 token" in reason for reason in reasons)
+
+
+def test_multi_query_relevance_uses_best_alias():
+    result = dedupe([RawItem({"Title": "Once Upon A Time in the Middle East 2026 1080p", "Guid": "a"}, "a")])[0]
+    summary = apply_relevance_queries(["欢迎来龙餐馆", "Once Upon A Time in the Middle East"], [result])
+
+    assert summary.high == 1
+    assert result.relevance_level == "high"
+    assert result.relevance_reasons[0] == "匹配搜索词: Once Upon A Time in the Middle East"
+
+
+def test_keyword_suggestions_are_deduplicated_and_bounded(monkeypatch):
+    async def fake_evidence(description, category):
+        return ["欢迎来龙餐馆 (豆瓣)", "Once Upon a Time in the Middle East"]
+
+    async def fake_completion(*args, **kwargs):
+        payload = {
+            "summary": "识别为欢迎来龙餐馆",
+            "candidates": [
+                {"keyword": "欢迎来龙餐馆", "label": "正式中文名", "kind": "official_cn", "reason": "演员与剧情匹配", "confidence": 0.98},
+                {"keyword": "欢迎来龙餐馆", "label": "重复项", "confidence": 0.5},
+                {"keyword": "Once Upon A Time in the Middle East", "label": "英文名", "kind": "english", "confidence": 0.94},
+            ],
+        }
+        return {"choices": [{"message": {"content": json.dumps(payload, ensure_ascii=False)}}]}, "primary"
+
+    monkeypatch.setattr(search_module, "web_title_evidence", fake_evidence)
+    monkeypatch.setattr(search_module, "chat_completion", fake_completion)
+    result = asyncio.run(suggest_search_keywords(None, "沈腾和蒋奇明演的，发生在阿拉伯地区", "movies"))
+
+    assert result.summary == "识别为欢迎来龙餐馆"
+    assert [item.keyword for item in result.candidates] == ["欢迎来龙餐馆", "Once Upon A Time in the Middle East"]
+
+
+def test_multi_query_search_merges_and_deduplicates(monkeypatch):
+    async def fake_search(settings, query, category):
+        common = RawItem({"Title": f"{query} 2026", "InfoHash": "same", "Seeders": 3}, query)
+        unique = RawItem({"Title": f"{query} unique", "Guid": query, "Seeders": 1}, query)
+        return [common, unique], [IndexerStatus(id="source", status="ok", count=2)]
+
+    async def fake_enrich(settings, results):
+        return None
+
+    monkeypatch.setattr(search_module, "search_jackett", fake_search)
+    monkeypatch.setattr(search_module, "enrich_with_llm", fake_enrich)
+    response = asyncio.run(search_and_enrich_queries(None, ["中文片名", "English Title"], "movies"))
+
+    assert response.query == "中文片名 | English Title"
+    assert response.total_raw == 4
+    assert response.total_deduped == 3
+    assert response.indexers[0].count == 4

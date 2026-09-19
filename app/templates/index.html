@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BoBSearch</title>
   <link rel="icon" href="/static/brand/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/app.css?v=1.0.24">
+  <link rel="stylesheet" href="/static/app.css?v=1.0.25">
 </head>
 <body>
   <div class="app-shell">
@@ -46,6 +46,21 @@
                 <option value="size">按大小</option>
               </select>
               <button id="searchBtn">搜索</button>
+            </div>
+            <div class="ai-discovery-panel">
+              <div class="ai-discovery-input">
+                <textarea id="keywordPrompt" rows="2" placeholder="不知道片名？输入演员、剧情、年代或地区线索，例如：沈腾和蒋奇明演的，发生在阿拉伯地区"></textarea>
+                <button id="suggestKeywordsBtn" class="ghost" type="button">AI 找片</button>
+              </div>
+              <div id="keywordSuggestionPanel" class="keyword-suggestion-panel hidden">
+                <p id="keywordSummary" class="keyword-summary"></p>
+                <div id="keywordCandidates" class="keyword-candidates"></div>
+                <div class="keyword-actions">
+                  <button id="searchSelectedKeywordsBtn" type="button">搜索所选关键词</button>
+                  <button id="clearKeywordSuggestionsBtn" class="ghost" type="button">清除</button>
+                </div>
+              </div>
+              <div id="keywordStatus" class="mini-status"></div>
             </div>
             <div class="filter-grid">
               <input id="inResultsQuery" placeholder="结果集内查询：标题、标签、源名、hash..." autocomplete="off">
@@ -178,6 +193,6 @@
     </main>
   </div>
 
-  <script src="/static/app.js?v=1.0.24"></script>
+  <script src="/static/app.js?v=1.0.25"></script>
 </body>
 </html>

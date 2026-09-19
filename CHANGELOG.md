@@ -6,6 +6,18 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.25] - 2026-09-19
+
+### Added
+
+- Added AI-assisted title discovery from free-form clues such as actors, plot, setting, era, and region.
+- Added selectable official titles, short titles, original titles, English titles, and alternative search aliases.
+- Added multi-keyword tracker searches with cross-query deduplication and relevance scoring against the best matching alias.
+
+### Changed
+
+- Zero-relevance searches now show a clear source-mismatch message while keeping noisy results in the collapsed diagnostic section.
+
 ## [1.0.24] - 2026-09-19
 
 ### Added
