@@ -563,8 +563,7 @@ def target_llm_file_context(file_names: list[str] | None) -> list[str]:
 
 async def llm_generated_target_suggestion(query: str, settings: Settings, file_names: list[str] | None = None) -> dict[str, Any] | None:
     file_context = target_llm_file_context(file_names)
-    tmdb_query = " ".join([query, *file_context[:8]])
-    tmdb_candidates = await tmdb_web_candidates(tmdb_query)
+    tmdb_candidates = await tmdb_web_candidates(query)
     prompt = {
         "task": "Identify a qBittorrent download task and generate one destination target.",
         "release_name": query,
@@ -575,6 +574,7 @@ async def llm_generated_target_suggestion(query: str, settings: Settings, file_n
         "required_folder_format": "movies: Title (YYYY) [tmdbid-NUMBER]; series: Series Title/Season NN; software: clean software package folder name",
         "rules": [
             "Use both release_name and download_file_names. File names are decisive when they reveal the actual media.",
+            "Featurettes, interviews, behind-the-scenes videos and soundtrack track names are supporting extras, not separate movie identities or television episodes.",
             "Find the actual movie/series title; ignore release groups, websites, codecs, quality, audio, subtitles and container text.",
             "If release_name or any download_file_names indicate a specific episode, classify it as series, not movie. Episode markers can be in Chinese, English, numeric season/episode forms, or mixed release notation.",
             "For series, infer season_number and episode_numbers from the most specific evidence in release_name or download_file_names.",
@@ -620,32 +620,8 @@ async def llm_generated_target_suggestion(query: str, settings: Settings, file_n
             parsed = folder_name_from_llm_target(target)
             if parsed:
                 return parsed
-        if len(tmdb_candidates) == 1:
-            candidate = tmdb_candidates[0]
-            return folder_name_from_llm_target(
-                {
-                    "category": candidate["category"],
-                    "title": candidate["title"],
-                    "year": candidate["year"],
-                    "tmdb_id": candidate["tmdb_id"],
-                    "score": 0.82,
-                    "reason": "TMDb 网站候选唯一匹配",
-                }
-            )
         return None
     except Exception:
-        if len(tmdb_candidates) == 1:
-            candidate = tmdb_candidates[0]
-            return folder_name_from_llm_target(
-                {
-                    "category": candidate["category"],
-                    "title": candidate["title"],
-                    "year": candidate["year"],
-                    "tmdb_id": candidate["tmdb_id"],
-                    "score": 0.82,
-                    "reason": "TMDb 网站候选唯一匹配",
-                }
-            )
         return None
 
 
@@ -696,9 +672,11 @@ def jellyfin_target_suggestions(query: str, settings: Settings, limit: int = 24,
             if not child.is_dir():
                 continue
             score, reason = target_score(query, child.name)
-            if category != "series" and score < MIN_EXISTING_TARGET_SCORE:
-                continue
-            if category == "series" and score <= 0:
+            series_title_match = (
+                category == "series"
+                and normalize_media_text(child.name) in normalize_media_text(query)
+            )
+            if score < MIN_EXISTING_TARGET_SCORE and not series_title_match:
                 continue
             if category == "series":
                 if not episode_info:

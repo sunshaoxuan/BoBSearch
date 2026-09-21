@@ -6,6 +6,14 @@ All notable changes to BoBSearch will be documented in this file.
 
 No unreleased changes.
 
+## [1.0.27] - 2026-09-21
+
+### Fixed
+
+- Exclude weak existing-series matches from destination suggestions, preventing unrelated movies from selecting a disabled series destination.
+- Invalidate cached destination suggestions created before this correction.
+- Search using the release title without concatenating soundtrack and bonus file names; remove the unsafe single-candidate fallback after failed identification.
+
 ## [1.0.26] - 2026-09-19
 
 ### Changed

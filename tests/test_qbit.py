@@ -956,6 +956,17 @@ def test_jellyfin_target_suggestions_do_not_match_prior_sequel_folder(tmp_path):
     assert "续集" in reason or "年份不一致" in reason
 
 
+def test_movie_release_does_not_suggest_unrelated_series(tmp_path):
+    cfg = Settings(jellyfin_library_path=str(tmp_path / "jellyfin"))
+    (tmp_path / "jellyfin" / "series" / "The Pitt").mkdir(parents=True)
+    suggestions = jellyfin_target_suggestions(
+        "Obsession (2026) (1080p BluRay x265 10bit EAC3 Atmos 7.1 Ghost) [QxR] [PROPER]",
+        cfg,
+        include_fallback=False,
+    )
+    assert suggestions == []
+
+
 def test_jellyfin_target_suggestions_hide_low_confidence_existing_movie(tmp_path):
     cfg = settings(tmp_path)
     (tmp_path / "jellyfin" / "movies" / "Project Hail Mary (2026) [tmdbid-687163]").mkdir(parents=True)
